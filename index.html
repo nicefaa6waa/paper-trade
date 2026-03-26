@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Paper Trading Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Paper Trading Dashboard</h1>
+            <div class="header-stats" id="globalStats">
+                </div>
+        </header>
+
+        <main>
+            <div class="col">
+                <section class="card new-trade-section">
+                    <h2>Open New Trade</h2>
+                    <form id="newTradeForm">
+                        <div class="input-group">
+                            <label for="ca">Contract Address (CA)</label>
+                            <input type="text" id="ca" placeholder="Paste Solana CA..." required>
+                        </div>
+                        <div class="input-group">
+                            <label for="buyPrice">Buy Amount (SOL)</label>
+                            <input type="number" id="buyPrice" step="0.001" placeholder="e.g. 0.5" required>
+                        </div>
+                        <button type="submit" id="addTradeBtn">Fetch Token & Add Trade</button>
+                    </form>
+                </section>
+
+                <section class="card open-trades-section">
+                    <h2>Open Trades</h2>
+                    <div id="openTradesList">
+                        </div>
+                </section>
+            </div>
+
+            <div class="col">
+                <section class="card history-section">
+                    <h2>Daily History & Closed Trades</h2>
+                    <div id="dailyHistoryList">
+                        </div>
+                </section>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
