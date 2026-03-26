@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pro Paper Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=4">
     <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -16,6 +16,7 @@
         <div class="header-actions">
             <button class="icon-btn" onclick="addFunds()">➕</button>
             <button class="icon-btn" onclick="resetWallet()">🔄</button>
+            <button class="icon-btn" onclick="openSettingsModal()" title="Slippage & Fees">🪂</button>
             <button class="icon-btn" onclick="openStatsModal()">📊</button>
         </div>
     </header>
@@ -35,7 +36,7 @@
                             <input type="number" id="buyPrice" step="0.001" inputmode="decimal" placeholder="0.5" required>
                         </div>
                         <div class="input-group">
-                            <label for="buyMC">Entry MC ($)</label>
+                            <label for="buyMC">Target MC ($)</label>
                             <input type="number" id="buyMC" step="1" inputmode="numeric" placeholder="50000" required>
                         </div>
                     </div>
@@ -93,6 +94,49 @@
         </div>
     </div>
 
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🪂 Bot Settings</h2>
+                <span class="close" onclick="closeSettingsModal()">&times;</span>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px;">Set your slippage, priority fees, and Jito tips. These will be automatically deducted from your wallet and applied to your execution Market Cap.</p>
+            <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div>
+                    <h3 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--success); border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">Buy Presets</h3>
+                    <div class="input-group" style="margin-bottom: 8px;">
+                        <label>Slippage (%)</label>
+                        <input type="number" id="setBuySlip" step="0.1" inputmode="decimal">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 8px;">
+                        <label>Priority (SOL)</label>
+                        <input type="number" id="setBuyPrio" step="0.0001" inputmode="decimal">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 8px;">
+                        <label>Tip (SOL)</label>
+                        <input type="number" id="setBuyTip" step="0.0001" inputmode="decimal">
+                    </div>
+                </div>
+                <div>
+                    <h3 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--danger); border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">Sell Presets</h3>
+                    <div class="input-group" style="margin-bottom: 8px;">
+                        <label>Slippage (%)</label>
+                        <input type="number" id="setSellSlip" step="0.1" inputmode="decimal">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 8px;">
+                        <label>Priority (SOL)</label>
+                        <input type="number" id="setSellPrio" step="0.0001" inputmode="decimal">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 8px;">
+                        <label>Tip (SOL)</label>
+                        <input type="number" id="setSellTip" step="0.0001" inputmode="decimal">
+                    </div>
+                </div>
+            </div>
+            <button class="btn-sell" style="width: 100%; margin-top: 15px; background: var(--accent); color: #000;" onclick="saveSettings()">Save & Apply Settings</button>
+        </div>
+    </div>
+
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="switchTab('openTradesTab', this)">
             <div class="nav-icon">⚡</div>
@@ -109,7 +153,5 @@
     </nav>
 
     <script src="script.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init();</script>
 </body>
 </html>
