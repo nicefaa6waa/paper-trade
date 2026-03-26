@@ -1,0 +1,20 @@
+{
+  "name": "Pro Paper Tracker",
+  "short_name": "PaperTrack",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#010409",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192/58a6ff/000000?text=PT",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512/58a6ff/000000?text=PT",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
