@@ -1,14 +1,12 @@
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(console.error);
-}
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js').catch(console.error); }
 
 const GAS_FEE = 0.002;
 let trades = [];
 let walletBalance = 0.000;
 let botSettings = { buyPrio: 0.001, buyTip: 0.005, buySlip: 5, sellPrio: 0.001, sellTip: 0.005, sellSlip: 5 };
-let currentSolPrice = 150; // Fallback USD price
+let currentSolPrice = 150; 
+let calendarCurrency = 'SOL'; // Toggle state
 
-// Fetch Live SOL Price for Flex Cards
 async function fetchSolPrice() {
     try {
         const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
@@ -18,7 +16,6 @@ async function fetchSolPrice() {
 }
 fetchSolPrice();
 
-// Bulletproof Loader
 try {
     const savedTrades = localStorage.getItem('proPaperTrades');
     if (savedTrades) {
@@ -51,20 +48,13 @@ function updateWalletUI() {
 
 function addFunds() {
     const amount = parseFloat(prompt("Enter virtual SOL to add:", "10"));
-    if (!isNaN(amount) && amount > 0) {
-        walletBalance += amount;
-        updateWalletUI();
-    }
+    if (!isNaN(amount) && amount > 0) { walletBalance += amount; updateWalletUI(); }
 }
 
 function resetWallet() {
-    if (confirm("Reset wallet to 0.000 SOL?")) {
-        walletBalance = 0;
-        updateWalletUI();
-    }
+    if (confirm("Reset wallet to 0.000 SOL?")) { walletBalance = 0; updateWalletUI(); }
 }
 
-// 🪂 SETTINGS MODAL
 function openSettingsModal() {
     document.getElementById('setBuyPrio').value = botSettings.buyPrio;
     document.getElementById('setBuyTip').value = botSettings.buyTip;
@@ -75,9 +65,7 @@ function openSettingsModal() {
     document.getElementById('settingsModal').style.display = 'block';
 }
 
-function closeSettingsModal() {
-    document.getElementById('settingsModal').style.display = 'none';
-}
+function closeSettingsModal() { document.getElementById('settingsModal').style.display = 'none'; }
 
 function saveSettings() {
     botSettings = {
@@ -92,20 +80,14 @@ function saveSettings() {
     closeSettingsModal();
 }
 
-// TABS
 function switchTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
-    if (element) {
-        element.classList.add('active');
-    } else {
-        const firstNav = document.querySelector('.nav-item');
-        if(firstNav) firstNav.classList.add('active');
-    }
+    if (element) { element.classList.add('active'); } 
+    else { const firstNav = document.querySelector('.nav-item'); if(firstNav) firstNav.classList.add('active'); }
 }
 
-// TOKEN FETCH (Pump.fun First)
 async function fetchTokenInfo(ca) {
     try {
         const pumpRes = await fetch(`https://frontend-api.pump.fun/coins/${ca}`);
@@ -128,7 +110,6 @@ async function fetchTokenInfo(ca) {
     return { name: "Unknown Token", symbol: "???", image: 'https://via.placeholder.com/32?text=?' };
 }
 
-// LOG TRADE
 document.getElementById('newTradeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('addTradeBtn');
@@ -145,41 +126,25 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
     walletBalance -= (buyPrice + totalBuyFee);
     updateWalletUI();
 
-    btn.innerText = "Fetching Token..."; btn.disabled = true;
+    btn.innerText = "Fetching..."; btn.disabled = true;
     const tokenInfo = await fetchTokenInfo(caInput);
 
     const newTrade = {
         id: Date.now().toString(),
-        date: dateInput,
-        ca: caInput,
-        name: tokenInfo.name,
-        symbol: tokenInfo.symbol,
-        image: tokenInfo.image,
-        buyPrice: buyPrice,
-        targetBuyMC: targetMC,
-        executedBuyMC: executedBuyMC,
-        status: 'open',
-        soldPercentage: 0,
-        totalRevenue: 0,
-        totalGasPaid: totalBuyFee,
-        sells: []
+        date: dateInput, ca: caInput, name: tokenInfo.name, symbol: tokenInfo.symbol, image: tokenInfo.image,
+        buyPrice: buyPrice, targetBuyMC: targetMC, executedBuyMC: executedBuyMC,
+        status: 'open', soldPercentage: 0, totalRevenue: 0, totalGasPaid: totalBuyFee, sells: []
     };
 
-    trades.unshift(newTrade);
-    saveData();
+    trades.unshift(newTrade); saveData();
     
-    document.getElementById('ca').value = '';
-    document.getElementById('buyPrice').value = '';
-    document.getElementById('buyMC').value = '';
-    btn.innerText = "Log Trade"; btn.disabled = false;
-    document.activeElement.blur(); 
+    document.getElementById('ca').value = ''; document.getElementById('buyPrice').value = ''; document.getElementById('buyMC').value = '';
+    btn.innerText = "Log Trade"; btn.disabled = false; document.activeElement.blur(); 
 });
 
-// SELL
 function handleSell(tradeId) {
     const targetSellMC = parseFloat(document.getElementById(`sellMC-${tradeId}`).value);
     const sellPct = parseFloat(document.getElementById(`sellPct-${tradeId}`).value);
-
     if (isNaN(targetSellMC) || isNaN(sellPct) || sellPct <= 0) return;
 
     const tradeIndex = trades.findIndex(t => t.id === tradeId);
@@ -187,7 +152,6 @@ function handleSell(tradeId) {
 
     let trade = trades[tradeIndex];
     const actualSellPct = Math.min(sellPct, 100 - (Number(trade.soldPercentage) || 0));
-    
     const totalSellFee = botSettings.sellPrio + botSettings.sellTip;
     const executedSellMC = targetSellMC * (1 - (botSettings.sellSlip / 100)); 
     
@@ -200,14 +164,8 @@ function handleSell(tradeId) {
 
     trade.sells = trade.sells || [];
     trade.sells.push({
-        targetSellMC: targetSellMC,
-        executedSellMC: executedSellMC,
-        percentage: actualSellPct,
-        pnlSol: pnlSol,
-        pnlPct: pnlPct,
-        revenue: revenueBeforeGas,
-        gas: totalSellFee,
-        timestamp: new Date().toISOString()
+        targetSellMC: targetSellMC, executedSellMC: executedSellMC, percentage: actualSellPct,
+        pnlSol: pnlSol, pnlPct: pnlPct, revenue: revenueBeforeGas, gas: totalSellFee, timestamp: new Date().toISOString()
     });
 
     trade.soldPercentage = (Number(trade.soldPercentage) || 0) + actualSellPct;
@@ -218,42 +176,24 @@ function handleSell(tradeId) {
     updateWalletUI();
 
     if (trade.soldPercentage >= 100) trade.status = 'closed';
-
-    trades[tradeIndex] = trade;
-    saveData();
-    document.activeElement.blur(); 
+    trades[tradeIndex] = trade; saveData(); document.activeElement.blur(); 
 }
 
 function deleteTrade(tradeId) {
-    if (confirm("Permanently delete this trade log?")) {
-        trades = trades.filter(t => t.id !== tradeId);
-        saveData();
-    }
+    if (confirm("Permanently delete this trade?")) { trades = trades.filter(t => t.id !== tradeId); saveData(); }
 }
 
-function saveData() {
-    localStorage.setItem('proPaperTrades', JSON.stringify(trades));
-    renderUI();
-}
-
-function renderUI() {
-    renderOpenTrades();
-    renderHistory('todayHistoryList', true);
-    renderHistory('allHistoryList', false);
-}
+function saveData() { localStorage.setItem('proPaperTrades', JSON.stringify(trades)); renderUI(); }
+function renderUI() { renderOpenTrades(); renderHistory('todayHistoryList', true); renderHistory('allHistoryList', false); }
 
 const formatSol = (val) => `${Number(val) > 0 ? '+' : ''}${(Number(val) || 0).toFixed(3)} SOL`;
 const formatPct = (val) => `${Number(val) > 0 ? '+' : ''}${(Number(val) || 0).toFixed(2)}%`;
 const getColor = (val) => Number(val) > 0 ? 'text-green' : Number(val) < 0 ? 'text-red' : '';
 
 function renderOpenTrades() {
-    const container = document.getElementById('openTradesList');
-    container.innerHTML = '';
+    const container = document.getElementById('openTradesList'); container.innerHTML = '';
     const openTrades = trades.filter(t => t.status === 'open').sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    if (openTrades.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">No active positions.</p>'; return;
-    }
+    if (openTrades.length === 0) { container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">No active positions.</p>'; return; }
 
     openTrades.forEach(trade => {
         const remainingPct = 100 - (Number(trade.soldPercentage) || 0);
@@ -268,34 +208,25 @@ function renderOpenTrades() {
                         <div class="trade-name">${trade.name || 'Unknown'} ($${trade.symbol || '?'})</div>
                         <div class="trade-date">${trade.date} | Exec Entry: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
                     </div>
-                    <button class="btn-remove" onclick="deleteTrade('${trade.id}')" title="Remove">
-                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
+                    <button class="btn-remove" onclick="deleteTrade('${trade.id}')">✕</button>
                 </div>
                 <div style="font-size: 0.9rem; margin-bottom: 5px; display: flex; justify-content: space-between;">
-                    <span><strong>Size:</strong> ${safeBuyPrice} SOL</span>
-                    <span><strong>Sold:</strong> ${Number(trade.soldPercentage) || 0}%</span>
+                    <span><strong>Size:</strong> ${safeBuyPrice} SOL</span><span><strong>Sold:</strong> ${Number(trade.soldPercentage) || 0}%</span>
                 </div>
                 <div class="sell-form">
                     <div class="input-group" style="margin-bottom:0">
                         <label>Target MC ($)</label>
                         <input type="number" inputmode="numeric" id="sellMC-${trade.id}" placeholder="100000">
                     </div>
-                    <div class="input-group" style="margin-bottom:0; max-width: 70px;">
-                        <label>Sell %</label>
-                        <input type="number" inputmode="numeric" id="sellPct-${trade.id}" max="${remainingPct}" value="${remainingPct}">
-                    </div>
+                    <div class="input-group" style="margin-bottom:0; max-width: 70px;"><label>Sell %</label><input type="number" inputmode="numeric" id="sellPct-${trade.id}" max="${remainingPct}" value="${remainingPct}"></div>
                     <button class="btn-sell" onclick="handleSell('${trade.id}')">Sell</button>
                 </div>
-            </div>
-        `;
+            </div>`;
     });
 }
 
 function renderHistory(containerId, onlyToday) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = '';
-    
+    const container = document.getElementById(containerId); container.innerHTML = '';
     let closedTrades = trades.filter(t => t.status === 'closed');
     if (onlyToday) closedTrades = closedTrades.filter(t => t.date === localDateStr);
 
@@ -306,9 +237,7 @@ function renderHistory(containerId, onlyToday) {
     });
     const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
 
-    if (dates.length === 0) {
-        container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">No closed trades ${onlyToday ? 'today' : 'yet'}.</p>`; return;
-    }
+    if (dates.length === 0) { container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">No closed trades ${onlyToday ? 'today' : 'yet'}.</p>`; return; }
 
     dates.forEach(date => {
         const dayTrades = grouped[date];
@@ -322,9 +251,7 @@ function renderHistory(containerId, onlyToday) {
 
             const netPnl = safeRevenue - safeBuyPrice - safeGas;
             const netPct = safeBuyPrice > 0 ? (netPnl / safeBuyPrice) * 100 : 0;
-            
-            dailyPnl += netPnl;
-            if (netPnl > 0) wins++;
+            dailyPnl += netPnl; if (netPnl > 0) wins++;
 
             const sellsHtml = (trade.sells || []).map(s => {
                 const finalMC = Number(s.executedSellMC) || Number(s.sellMC) || 0;
@@ -338,77 +265,66 @@ function renderHistory(containerId, onlyToday) {
                         <div class="trade-info"><div class="trade-name">${trade.name || 'Unknown'}</div></div>
                         <div style="text-align: right;">
                             <div class="${getColor(netPnl)}">${formatPct(netPct)} <br> <small>${formatSol(netPnl)}</small></div>
-                            <button class="btn-remove" onclick="deleteTrade('${trade.id}')" style="margin-top: 5px; margin-left: auto; width: 22px; height: 22px;" title="Remove">
-                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"></path></svg>
-                            </button>
+                            <button class="btn-remove" onclick="deleteTrade('${trade.id}')" style="margin-top: 5px; margin-left: auto; width: 22px; height: 22px;">✕</button>
                         </div>
                     </div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">
-                        Exec Entry: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})} | Fees: -${safeGas.toFixed(3)}<br>
-                        ${sellsHtml}
-                    </div>
-                    <button class="btn-sell" onclick="openFlexModal('${trade.id}')" style="margin-top: 10px; width: 100%; background: var(--card-bg); color: var(--text-main); border: 1px solid var(--accent); padding: 8px;">
-                        📸 PnL Flex
-                    </button>
-                </div>
-            `;
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Exec Entry: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})} | Fees: -${safeGas.toFixed(3)}<br>${sellsHtml}</div>
+                    <button class="btn-sell" onclick="openFlexModal('${trade.id}')" style="margin-top: 10px; width: 100%; background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border-color); padding: 8px;">📸 PnL Flex</button>
+                </div>`;
         });
-
         const winRate = dayTrades.length > 0 ? ((wins / dayTrades.length) * 100).toFixed(0) : 0;
-        container.innerHTML += `
-            <div class="daily-log">
-                <h3>${date}</h3>
-                <div class="daily-stats">
-                    <div>PnL: <span class="${getColor(dailyPnl)}">${formatSol(dailyPnl)}</span></div>
-                    <div>Win Rate: ${winRate}%</div>
-                </div>
-                ${tradesHtml}
-            </div>
-        `;
+        container.innerHTML += `<div class="daily-log"><h3>${date}</h3><div class="daily-stats"><div>PnL: <span class="${getColor(dailyPnl)}">${formatSol(dailyPnl)}</span></div><div>Win Rate: ${winRate}%</div></div>${tradesHtml}</div>`;
     });
 }
 
-// --- PNL FLEX CARD GENERATOR ---
+// --- PNL FLEX CARD GENERATORS ---
 function openFlexModal(tradeId) {
-    const trade = trades.find(t => t.id === tradeId);
-    if(!trade) return;
-
-    const safeRevenue = Number(trade.totalRevenue) || 0;
-    const safeBuyPrice = Number(trade.buyPrice) || 0;
-    const safeGas = Number(trade.totalGasPaid) || 0;
-    
-    const netPnlSol = safeRevenue - safeBuyPrice - safeGas;
-    const netPct = safeBuyPrice > 0 ? (netPnlSol / safeBuyPrice) * 100 : 0;
+    const trade = trades.find(t => t.id === tradeId); if(!trade) return;
+    const netPnlSol = (Number(trade.totalRevenue) || 0) - (Number(trade.buyPrice) || 0) - (Number(trade.totalGasPaid) || 0);
+    const netPct = (Number(trade.buyPrice) || 0) > 0 ? (netPnlSol / Number(trade.buyPrice)) * 100 : 0;
     const netPnlUsd = netPnlSol * currentSolPrice;
 
-    document.getElementById('flexCoinImg').src = trade.image;
-    document.getElementById('flexCoinName').innerText = trade.name || 'Unknown';
-    
-    const pctEl = document.getElementById('flexPct');
-    pctEl.innerText = `${netPct > 0 ? '+' : ''}${netPct.toFixed(2)}%`;
-    pctEl.className = `flex-pnl-pct ${netPct < 0 ? 'negative' : ''}`;
-
-    document.getElementById('flexSol').innerText = `${netPnlSol > 0 ? '+' : ''}${netPnlSol.toFixed(3)} SOL`;
-    
-    const usdEl = document.getElementById('flexUsd');
-    usdEl.innerText = `${netPnlUsd > 0 ? '+$' : '-$'}${Math.abs(netPnlUsd).toFixed(2)}`;
-    usdEl.className = `flex-pnl-usd ${netPnlUsd < 0 ? 'negative' : ''}`;
-    
-    document.getElementById('flexInvested').innerText = `${safeBuyPrice.toFixed(3)} SOL`;
-    document.getElementById('flexSold').innerText = `${safeRevenue.toFixed(3)} SOL`;
-
+    document.getElementById('flexCoinImg').src = trade.image; document.getElementById('flexCoinName').innerText = trade.name || 'Unknown';
+    populateFlexData(netPct, netPnlSol, netPnlUsd, trade.buyPrice, trade.totalRevenue);
     document.getElementById('flexModal').style.display = 'block';
 }
 
-function closeFlexModal() { document.getElementById('flexModal').style.display = 'none'; }
+function openMonthlyFlexModal() {
+    const year = currentDate.getFullYear(); const month = currentDate.getMonth();
+    let tInvest = 0; let tRev = 0; let tGas = 0;
+    trades.forEach(trade => {
+        (trade.sells || []).forEach(sell => {
+            const sellDate = new Date(sell.timestamp);
+            if(sellDate.getFullYear() === year && sellDate.getMonth() === month) {
+                tInvest += (Number(trade.buyPrice) || 0) * ((Number(sell.percentage) || 0) / 100);
+                tRev += (Number(sell.revenue) || 0); tGas += (Number(sell.gas) || 0);
+            }
+        });
+    });
 
+    const netPnlSol = tRev - tInvest - tGas;
+    const netPct = tInvest > 0 ? (netPnlSol / tInvest) * 100 : 0;
+    const netPnlUsd = netPnlSol * currentSolPrice;
+
+    document.getElementById('flexCoinImg').src = 'https://via.placeholder.com/150/eab308/000000?text=🏆';
+    document.getElementById('flexCoinName').innerText = `${new Date(year, month).toLocaleString('default', { month: 'long' })} PnL`;
+    populateFlexData(netPct, netPnlSol, netPnlUsd, tInvest, tRev);
+    document.getElementById('flexModal').style.display = 'block';
+}
+
+function populateFlexData(pct, sol, usd, invest, sold) {
+    const pctEl = document.getElementById('flexPct'); pctEl.innerText = `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`; pctEl.className = `flex-pnl-pct ${pct < 0 ? 'negative' : ''}`;
+    document.getElementById('flexSol').innerText = `${sol > 0 ? '+' : ''}${sol.toFixed(3)} SOL`;
+    const usdEl = document.getElementById('flexUsd'); usdEl.innerText = `${usd > 0 ? '+$' : '-$'}${Math.abs(usd).toFixed(2)}`; usdEl.className = `flex-pnl-usd ${usd < 0 ? 'negative' : ''}`;
+    document.getElementById('flexInvested').innerText = `${invest.toFixed(3)} SOL`; document.getElementById('flexSold').innerText = `${sold.toFixed(3)} SOL`;
+}
+
+function closeFlexModal() { document.getElementById('flexModal').style.display = 'none'; }
 function updateFlexBg(event) {
     const file = event.target.files[0];
     if(file) {
         const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('flexCard').style.backgroundImage = `url('${e.target.result}')`;
-        }
+        reader.onload = function(e) { document.getElementById('flexCard').style.backgroundImage = `url('${e.target.result}')`; }
         reader.readAsDataURL(file);
     }
 }
@@ -416,58 +332,46 @@ function updateFlexBg(event) {
 // --- BACKUP LOGIC ---
 function exportData() {
     const dataStr = JSON.stringify({ trades, walletBalance, botSettings });
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `PaperTrack_Backup_${localDateStr}.json`;
-    a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([dataStr], { type: "application/json" }));
+    a.download = `PaperTrack_${localDateStr}.json`; a.click();
 }
 
 function importData(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+    const file = event.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
             if (Array.isArray(data)) trades = data;
-            else if (data && data.trades) {
-                trades = Array.isArray(data.trades) ? data.trades : [];
-                if (data.walletBalance !== undefined) walletBalance = Number(data.walletBalance) || 0;
-                if (data.botSettings) botSettings = { ...botSettings, ...data.botSettings };
-            } else throw new Error();
-            saveData();
-            updateWalletUI();
-            localStorage.setItem('proBotSettings', JSON.stringify(botSettings));
-            alert("Restored!");
+            else if (data && data.trades) { trades = Array.isArray(data.trades) ? data.trades : []; walletBalance = Number(data.walletBalance) || 0; botSettings = { ...botSettings, ...data.botSettings }; } 
+            else throw new Error();
+            saveData(); updateWalletUI(); localStorage.setItem('proBotSettings', JSON.stringify(botSettings)); alert("Restored!");
             if(document.getElementById('statsModal').style.display === 'block') renderMonthlyStats();
         } catch (err) { alert("Error restoring backup."); }
     };
-    reader.readAsText(file);
-    event.target.value = ''; 
+    reader.readAsText(file); event.target.value = ''; 
 }
 
-// --- PNL CALENDAR ---
+// --- AXIOM PNL CALENDAR ---
 let currentDate = new Date();
-
-function openStatsModal() {
-    document.getElementById('statsModal').style.display = 'block';
-    renderMonthlyStats();
-}
+function openStatsModal() { document.getElementById('statsModal').style.display = 'block'; renderMonthlyStats(); }
 function closeStatsModal() { document.getElementById('statsModal').style.display = 'none'; }
 function changeMonth(dir) { currentDate.setMonth(currentDate.getMonth() + dir); renderMonthlyStats(); }
 
+function toggleCalendarCurrency() {
+    calendarCurrency = calendarCurrency === 'SOL' ? 'USD' : 'SOL';
+    document.getElementById('calCurrencyLabel').innerText = `(${calendarCurrency})`;
+    renderMonthlyStats();
+}
+
 function renderMonthlyStats() {
     const container = document.getElementById('calendarGrid');
-    const label = document.getElementById('calendarMonthLabel');
+    document.getElementById('calendarMonthLabel').innerText = new Date(currentDate.getFullYear(), currentDate.getMonth()).toLocaleString('default', { month: 'long', year: 'numeric' });
     container.innerHTML = '';
     
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    label.innerText = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
-
+    const year = currentDate.getFullYear(); const month = currentDate.getMonth();
     const dailyPnL = {};
+
     trades.forEach(trade => {
         (trade.sells || []).forEach(sell => {
             const sellDate = new Date(sell.timestamp);
@@ -480,28 +384,36 @@ function renderMonthlyStats() {
 
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    let startDay = firstDay - 1; 
-    if (startDay === -1) startDay = 6;
+    let startDay = firstDay - 1; if (startDay === -1) startDay = 6; // Mon-Sun fix
 
     for (let i = 0; i < startDay; i++) container.innerHTML += `<div class="calendar-day empty"></div>`;
 
     for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const pnl = dailyPnL[dateStr] || 0;
+        let pnlSol = dailyPnL[dateStr] || 0;
         
-        let classes = "calendar-day";
-        if (dateStr === localDateStr) classes += " today"; 
-        if (pnl > 0) classes += " positive";
-        if (pnl < 0) classes += " negative";
+        let displayPnl = pnlSol;
+        if (calendarCurrency === 'USD') displayPnl = pnlSol * currentSolPrice;
 
-        let pnlText = pnl !== 0 ? formatSol(pnl) : "";
-        let pnlColorClass = pnl > 0 ? "text-green" : (pnl < 0 ? "text-red" : "");
+        let classes = "calendar-day zero";
+        if (dateStr === localDateStr) classes += " today"; 
+        
+        // Exact formatting logic from image
+        let pnlText = calendarCurrency === 'USD' ? '0$' : '0 SOL';
+        if (displayPnl > 0.001) {
+            classes = classes.replace('zero', 'positive');
+            pnlText = calendarCurrency === 'USD' ? `+$${displayPnl.toFixed(2)}` : `+${displayPnl.toFixed(3)}`;
+        } else if (displayPnl < -0.001) {
+            classes = classes.replace('zero', 'negative');
+            pnlText = calendarCurrency === 'USD' ? `-$${Math.abs(displayPnl).toFixed(2)}` : `${displayPnl.toFixed(3)}`;
+        }
 
         container.innerHTML += `
             <div class="${classes}">
                 <span class="day-num">${day}</span>
-                <span class="day-pnl ${pnlColorClass}">${pnlText}</span>
+                <span class="day-pnl">${pnlText}</span>
             </div>
         `;
     }
 }
+
