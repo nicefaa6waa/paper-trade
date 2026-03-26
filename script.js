@@ -36,19 +36,16 @@ function resetWallet() {
 
 // Tab Navigation for Bottom Nav
 function switchTab(tabId, element) {
-    // Hide all tabs
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-    // Remove active state from all nav items
     document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
     
-    // Show selected tab
     document.getElementById(tabId).classList.add('active');
     
-    // If clicked via nav button, set it to active. Otherwise fallback to first button (default load)
     if (element) {
         element.classList.add('active');
     } else {
-        document.querySelector('.nav-item').classList.add('active');
+        const firstNav = document.querySelector('.nav-item');
+        if(firstNav) firstNav.classList.add('active');
     }
 }
 
@@ -118,8 +115,6 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
     document.getElementById('buyMC').value = '';
     
     btn.innerText = "Log Trade"; btn.disabled = false;
-    
-    // On Android, blur the inputs to hide keyboard automatically after submitting
     document.activeElement.blur(); 
 });
 
@@ -134,15 +129,16 @@ function handleSell(tradeId) {
     if (tradeIndex === -1) return;
 
     let trade = trades[tradeIndex];
-    const actualSellPct = Math.min(sellPct, 100 - trade.soldPercentage);
+    const actualSellPct = Math.min(sellPct, 100 - (trade.soldPercentage || 0));
     
-    const costBasis = trade.buyPrice * (actualSellPct / 100);
-    const mcMultiplier = sellMC / trade.buyMC;
+    const costBasis = (trade.buyPrice || 0) * (actualSellPct / 100);
+    const mcMultiplier = sellMC / (trade.buyMC || 1); // Prevent division by zero
     const revenueBeforeGas = costBasis * mcMultiplier;
     
     const pnlSol = revenueBeforeGas - costBasis - GAS_FEE;
     const pnlPct = ((revenueBeforeGas / costBasis) - 1) * 100;
 
+    trade.sells = trade.sells || [];
     trade.sells.push({
         sellMC: sellMC,
         percentage: actualSellPct,
@@ -153,9 +149,9 @@ function handleSell(tradeId) {
         timestamp: new Date().toISOString()
     });
 
-    trade.soldPercentage += actualSellPct;
-    trade.totalRevenue += revenueBeforeGas;
-    trade.totalGasPaid += GAS_FEE;
+    trade.soldPercentage = (trade.soldPercentage || 0) + actualSellPct;
+    trade.totalRevenue = (trade.totalRevenue || 0) + revenueBeforeGas;
+    trade.totalGasPaid = (trade.totalGasPaid || 0) + GAS_FEE;
 
     walletBalance += (revenueBeforeGas - GAS_FEE);
     updateWalletUI();
@@ -164,7 +160,7 @@ function handleSell(tradeId) {
 
     trades[tradeIndex] = trade;
     saveData();
-    document.activeElement.blur(); // Hide keyboard
+    document.activeElement.blur(); 
 }
 
 // Save & Render
@@ -179,8 +175,8 @@ function renderUI() {
     renderHistory('allHistoryList', false);
 }
 
-const formatSol = (val) => `${val > 0 ? '+' : ''}${val.toFixed(3)} SOL`;
-const formatPct = (val) => `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
+const formatSol = (val) => `${val > 0 ? '+' : ''}${(val || 0).toFixed(3)} SOL`;
+const formatPct = (val) => `${val > 0 ? '+' : ''}${(val || 0).toFixed(2)}%`;
 const getColor = (val) => val > 0 ? 'text-green' : val < 0 ? 'text-red' : '';
 
 function renderOpenTrades() {
@@ -193,17 +189,19 @@ function renderOpenTrades() {
     }
 
     openTrades.forEach(trade => {
-        const remainingPct = 100 - trade.soldPercentage;
+        const remainingPct = 100 - (trade.soldPercentage || 0);
+        const safeBuyMC = trade.buyMC || 0;
+        
         container.innerHTML += `
             <div class="trade-item">
                 <div class="trade-header">
                     <img src="${trade.image}" alt="token">
                     <div class="trade-info">
-                        <div class="trade-name">${trade.name} ($${trade.symbol})</div>
-                        <div class="trade-date">${trade.date} | Entry MC: $${trade.buyMC.toLocaleString()}</div>
+                        <div class="trade-name">${trade.name || 'Unknown'} ($${trade.symbol || '?'})</div>
+                        <div class="trade-date">${trade.date} | Entry MC: $${safeBuyMC.toLocaleString()}</div>
                     </div>
                 </div>
-                <div style="font-size: 0.9rem; margin-bottom: 5px;"><strong>Entry:</strong> ${trade.buyPrice} SOL | <strong>Sold:</strong> ${trade.soldPercentage}%</div>
+                <div style="font-size: 0.9rem; margin-bottom: 5px;"><strong>Entry:</strong> ${trade.buyPrice} SOL | <strong>Sold:</strong> ${trade.soldPercentage || 0}%</div>
                 <div class="sell-form">
                     <div class="input-group" style="margin-bottom:0">
                         <label>Sell MC ($)</label>
@@ -224,7 +222,7 @@ function renderHistory(containerId, onlyToday) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
     
-    const todayStr = localDateStr; // Uses the properly formatted timezone local date
+    const todayStr = localDateStr; 
     
     let closedTrades = trades.filter(t => t.status === 'closed');
     
@@ -249,27 +247,35 @@ function renderHistory(containerId, onlyToday) {
         let dailyPnl = 0; let wins = 0; let tradesHtml = '';
 
         dayTrades.forEach(trade => {
-            const netPnl = trade.totalRevenue - trade.buyPrice - trade.totalGasPaid;
-            const netPct = (netPnl / trade.buyPrice) * 100;
+            const safeRevenue = trade.totalRevenue || 0;
+            const safeBuyPrice = trade.buyPrice || 0;
+            const safeGas = trade.totalGasPaid || 0;
+            const safeBuyMC = trade.buyMC || 0;
+
+            const netPnl = safeRevenue - safeBuyPrice - safeGas;
+            const netPct = safeBuyPrice > 0 ? (netPnl / safeBuyPrice) * 100 : 0;
+            
             dailyPnl += netPnl;
             if (netPnl > 0) wins++;
+
+            const sellsHtml = (trade.sells || []).map(s => `Sold ${s.percentage}% @ $${(s.sellMC || 0).toLocaleString()}`).join('<br>');
 
             tradesHtml += `
                 <div class="trade-item">
                     <div class="trade-header">
                         <img src="${trade.image}">
-                        <div class="trade-info"><div class="trade-name">${trade.name}</div></div>
+                        <div class="trade-info"><div class="trade-name">${trade.name || 'Unknown'}</div></div>
                         <div class="${getColor(netPnl)}">${formatPct(netPct)} <br> <small>${formatSol(netPnl)}</small></div>
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted);">
-                        Entry MC: $${trade.buyMC.toLocaleString()} | Gas: -${trade.totalGasPaid.toFixed(3)}<br>
-                        ${trade.sells.map(s => `Sold ${s.percentage}% @ $${s.sellMC.toLocaleString()}`).join('<br>')}
+                        Entry MC: $${safeBuyMC.toLocaleString()} | Gas: -${safeGas.toFixed(3)}<br>
+                        ${sellsHtml}
                     </div>
                 </div>
             `;
         });
 
-        const winRate = ((wins / dayTrades.length) * 100).toFixed(0);
+        const winRate = dayTrades.length > 0 ? ((wins / dayTrades.length) * 100).toFixed(0) : 0;
         container.innerHTML += `
             <div class="daily-log">
                 <h3>${date}</h3>
@@ -291,11 +297,11 @@ function renderMonthlyStats() {
     trades.forEach(trade => {
         if (!grouped[trade.date]) grouped[trade.date] = { pnl: 0, count: 0, wins: 0 };
         
-        trade.sells.forEach(sell => {
-            grouped[trade.date].pnl += sell.pnlSol;
-            if (sell.pnlSol > 0) grouped[trade.date].wins++;
+        (trade.sells || []).forEach(sell => {
+            grouped[trade.date].pnl += (sell.pnlSol || 0);
+            if ((sell.pnlSol || 0) > 0) grouped[trade.date].wins++;
         });
-        grouped[trade.date].count += trade.sells.length;
+        grouped[trade.date].count += (trade.sells || []).length;
     });
 
     const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
