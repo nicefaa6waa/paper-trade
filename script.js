@@ -6,9 +6,30 @@ if ('serviceWorker' in navigator) {
 // Default Gas Fee in SOL
 const GAS_FEE = 0.002;
 
-// State
-let trades = JSON.parse(localStorage.getItem('proPaperTrades')) || [];
-let walletBalance = parseFloat(localStorage.getItem('proWalletBalance')) || 0.000;
+// State - MADE BULLETPROOF AGAINST CORRUPTED DATA
+let trades = [];
+let walletBalance = 0.000;
+
+try {
+    const savedTrades = localStorage.getItem('proPaperTrades');
+    if (savedTrades) {
+        const parsed = JSON.parse(savedTrades);
+        // Ensure the loaded data is actually an array, otherwise reset it
+        trades = Array.isArray(parsed) ? parsed : (parsed.trades || []);
+    }
+} catch (e) {
+    console.error("Corrupted trade data found and ignored.", e);
+    trades = [];
+}
+
+try {
+    const savedWallet = localStorage.getItem('proWalletBalance');
+    if (savedWallet) {
+        walletBalance = parseFloat(savedWallet) || 0.000;
+    }
+} catch (e) {
+    walletBalance = 0.000;
+}
 
 // Init Setup - Handle Timezones gracefully
 const todayDate = new Date();
@@ -103,7 +124,7 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
         sells: []
     };
 
-    trades.push(newTrade);
+    trades.unshift(newTrade); // Add new trades to the top of the list
     saveData();
     
     document.getElementById('ca').value = '';
@@ -111,7 +132,7 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
     document.getElementById('buyMC').value = '';
     
     btn.innerText = "Log Trade"; btn.disabled = false;
-    document.activeElement.blur(); 
+    document.activeElement.blur(); // Hide Android Keyboard
 });
 
 // Handle Sell
@@ -323,8 +344,8 @@ function importData(event) {
             if (Array.isArray(data)) {
                 trades = data;
             } else if (data && data.trades) {
-                trades = data.trades;
-                if (data.walletBalance !== undefined) walletBalance = Number(data.walletBalance);
+                trades = Array.isArray(data.trades) ? data.trades : [];
+                if (data.walletBalance !== undefined) walletBalance = Number(data.walletBalance) || 0;
             } else {
                 throw new Error("Unrecognized Format");
             }
@@ -410,4 +431,3 @@ function renderMonthlyStats() {
         `;
     }
 }
-
