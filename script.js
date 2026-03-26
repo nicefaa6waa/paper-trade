@@ -5,8 +5,11 @@ const GAS_FEE = 0.002;
 let trades = JSON.parse(localStorage.getItem('proPaperTrades')) || [];
 let walletBalance = parseFloat(localStorage.getItem('proWalletBalance')) || 0.000;
 
-// Init Setup
-document.getElementById('tradeDate').valueAsDate = new Date(); // Set today by default
+// Init Setup - FIXED TIMEZONE BUG
+const today = new Date();
+const localDateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+document.getElementById('tradeDate').value = localDateStr;
+
 updateWalletUI();
 renderUI();
 
@@ -31,13 +34,16 @@ function resetWallet() {
     }
 }
 
-// Tab Navigation
+// Tab Navigation - FIXED EVENT CRASH BUG
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     
     document.getElementById(tabId).classList.add('active');
-    event.currentTarget.classList.add('active');
+    
+    // Safely find and highlight the clicked button
+    const activeBtn = document.querySelector(`button[onclick="switchTab('${tabId}')"]`);
+    if(activeBtn) activeBtn.classList.add('active');
 }
 
 // Modal Functions
@@ -76,7 +82,6 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
 
     if (!caInput || isNaN(buyPrice) || isNaN(buyMC)) return;
 
-    // Deduct from wallet (Buy Amount + Gas Fee)
     walletBalance -= (buyPrice + GAS_FEE);
     updateWalletUI();
 
@@ -121,7 +126,6 @@ function handleSell(tradeId) {
     let trade = trades[tradeIndex];
     const actualSellPct = Math.min(sellPct, 100 - trade.soldPercentage);
     
-    // Calculate PnL based on Market Cap shift
     const costBasis = trade.buyPrice * (actualSellPct / 100);
     const mcMultiplier = sellMC / trade.buyMC;
     const revenueBeforeGas = costBasis * mcMultiplier;
@@ -143,7 +147,6 @@ function handleSell(tradeId) {
     trade.totalRevenue += revenueBeforeGas;
     trade.totalGasPaid += GAS_FEE;
 
-    // Add revenue minus gas to wallet
     walletBalance += (revenueBeforeGas - GAS_FEE);
     updateWalletUI();
 
@@ -210,7 +213,10 @@ function renderHistory(containerId, onlyToday) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
     
-    const todayStr = new Date().toISOString().split('T')[0];
+    // FIXED TIMEZONE BUG HERE TOO
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    
     let closedTrades = trades.filter(t => t.status === 'closed');
     
     if (onlyToday) {
@@ -276,7 +282,6 @@ function renderMonthlyStats() {
     trades.forEach(trade => {
         if (!grouped[trade.date]) grouped[trade.date] = { pnl: 0, count: 0, wins: 0, gas: 0 };
         
-        // Only count realized PnL from sells for the daily stat tracker
         trade.sells.forEach(sell => {
             grouped[trade.date].pnl += sell.pnlSol;
             if (sell.pnlSol > 0) grouped[trade.date].wins++;
