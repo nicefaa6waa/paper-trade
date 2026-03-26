@@ -5,7 +5,7 @@ const GAS_FEE = 0.002;
 let trades = JSON.parse(localStorage.getItem('proPaperTrades')) || [];
 let walletBalance = parseFloat(localStorage.getItem('proWalletBalance')) || 0.000;
 
-// Init Setup - FIXED TIMEZONE BUG
+// Init Setup - Handle Timezones gracefully
 const today = new Date();
 const localDateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
 document.getElementById('tradeDate').value = localDateStr;
@@ -28,22 +28,28 @@ function addFunds() {
 }
 
 function resetWallet() {
-    if (confirm("Are you sure you want to reset your wallet to 0?")) {
+    if (confirm("Reset your wallet to 0.000 SOL?")) {
         walletBalance = 0;
         updateWalletUI();
     }
 }
 
-// Tab Navigation - FIXED EVENT CRASH BUG
-function switchTab(tabId) {
+// Tab Navigation for Bottom Nav
+function switchTab(tabId, element) {
+    // Hide all tabs
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    // Remove active state from all nav items
+    document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
     
+    // Show selected tab
     document.getElementById(tabId).classList.add('active');
     
-    // Safely find and highlight the clicked button
-    const activeBtn = document.querySelector(`button[onclick="switchTab('${tabId}')"]`);
-    if(activeBtn) activeBtn.classList.add('active');
+    // If clicked via nav button, set it to active. Otherwise fallback to first button (default load)
+    if (element) {
+        element.classList.add('active');
+    } else {
+        document.querySelector('.nav-item').classList.add('active');
+    }
 }
 
 // Modal Functions
@@ -110,7 +116,11 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
     document.getElementById('ca').value = '';
     document.getElementById('buyPrice').value = '';
     document.getElementById('buyMC').value = '';
-    btn.innerText = "Fetch Token & Add Trade"; btn.disabled = false;
+    
+    btn.innerText = "Log Trade"; btn.disabled = false;
+    
+    // On Android, blur the inputs to hide keyboard automatically after submitting
+    document.activeElement.blur(); 
 });
 
 // Handle Sell
@@ -154,6 +164,7 @@ function handleSell(tradeId) {
 
     trades[tradeIndex] = trade;
     saveData();
+    document.activeElement.blur(); // Hide keyboard
 }
 
 // Save & Render
@@ -178,7 +189,7 @@ function renderOpenTrades() {
     const openTrades = trades.filter(t => t.status === 'open').sort((a, b) => new Date(b.date) - new Date(a.date));
 
     if (openTrades.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-muted)">No open trades.</p>'; return;
+        container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">No active positions.</p>'; return;
     }
 
     openTrades.forEach(trade => {
@@ -192,15 +203,15 @@ function renderOpenTrades() {
                         <div class="trade-date">${trade.date} | Entry MC: $${trade.buyMC.toLocaleString()}</div>
                     </div>
                 </div>
-                <div><strong>Bought:</strong> ${trade.buyPrice} SOL | <strong>Sold:</strong> ${trade.soldPercentage}%</div>
+                <div style="font-size: 0.9rem; margin-bottom: 5px;"><strong>Entry:</strong> ${trade.buyPrice} SOL | <strong>Sold:</strong> ${trade.soldPercentage}%</div>
                 <div class="sell-form">
                     <div class="input-group" style="margin-bottom:0">
                         <label>Sell MC ($)</label>
-                        <input type="number" id="sellMC-${trade.id}" placeholder="e.g. 100000">
+                        <input type="number" inputmode="numeric" id="sellMC-${trade.id}" placeholder="100000">
                     </div>
-                    <div class="input-group" style="margin-bottom:0">
+                    <div class="input-group" style="margin-bottom:0; max-width: 70px;">
                         <label>Sell %</label>
-                        <input type="number" id="sellPct-${trade.id}" max="${remainingPct}" value="${remainingPct}">
+                        <input type="number" inputmode="numeric" id="sellPct-${trade.id}" max="${remainingPct}" value="${remainingPct}">
                     </div>
                     <button class="btn-sell" onclick="handleSell('${trade.id}')">Sell</button>
                 </div>
@@ -213,9 +224,7 @@ function renderHistory(containerId, onlyToday) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
     
-    // FIXED TIMEZONE BUG HERE TOO
-    const today = new Date();
-    const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    const todayStr = localDateStr; // Uses the properly formatted timezone local date
     
     let closedTrades = trades.filter(t => t.status === 'closed');
     
@@ -232,7 +241,7 @@ function renderHistory(containerId, onlyToday) {
     const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
 
     if (dates.length === 0) {
-        container.innerHTML = `<p style="color: var(--text-muted)">No closed trades ${onlyToday ? 'today' : 'yet'}.</p>`; return;
+        container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">No closed trades ${onlyToday ? 'today' : 'yet'}.</p>`; return;
     }
 
     dates.forEach(date => {
@@ -250,23 +259,23 @@ function renderHistory(containerId, onlyToday) {
                     <div class="trade-header">
                         <img src="${trade.image}">
                         <div class="trade-info"><div class="trade-name">${trade.name}</div></div>
-                        <div class="${getColor(netPnl)}">${formatPct(netPct)} (${formatSol(netPnl)})</div>
+                        <div class="${getColor(netPnl)}">${formatPct(netPct)} <br> <small>${formatSol(netPnl)}</small></div>
                     </div>
-                    <div style="font-size: 0.85rem; color: var(--text-muted);">
-                        Entry MC: $${trade.buyMC.toLocaleString()} | Gas Paid: -${trade.totalGasPaid.toFixed(3)} SOL<br>
-                        ${trade.sells.map(s => `Sold ${s.percentage}% @ $${s.sellMC.toLocaleString()} MC`).join('<br>')}
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                        Entry MC: $${trade.buyMC.toLocaleString()} | Gas: -${trade.totalGasPaid.toFixed(3)}<br>
+                        ${trade.sells.map(s => `Sold ${s.percentage}% @ $${s.sellMC.toLocaleString()}`).join('<br>')}
                     </div>
                 </div>
             `;
         });
 
-        const winRate = ((wins / dayTrades.length) * 100).toFixed(1);
+        const winRate = ((wins / dayTrades.length) * 100).toFixed(0);
         container.innerHTML += `
             <div class="daily-log">
                 <h3>${date}</h3>
                 <div class="daily-stats">
-                    <div><strong>PnL:</strong> <span class="${getColor(dailyPnl)}">${formatSol(dailyPnl)}</span></div>
-                    <div><strong>Win Rate:</strong> ${winRate}% (${wins}/${dayTrades.length})</div>
+                    <div>PnL: <span class="${getColor(dailyPnl)}">${formatSol(dailyPnl)}</span></div>
+                    <div>Win Rate: ${winRate}%</div>
                 </div>
                 ${tradesHtml}
             </div>
@@ -280,14 +289,13 @@ function renderMonthlyStats() {
 
     const grouped = {};
     trades.forEach(trade => {
-        if (!grouped[trade.date]) grouped[trade.date] = { pnl: 0, count: 0, wins: 0, gas: 0 };
+        if (!grouped[trade.date]) grouped[trade.date] = { pnl: 0, count: 0, wins: 0 };
         
         trade.sells.forEach(sell => {
             grouped[trade.date].pnl += sell.pnlSol;
             if (sell.pnlSol > 0) grouped[trade.date].wins++;
         });
         grouped[trade.date].count += trade.sells.length;
-        grouped[trade.date].gas += trade.totalGasPaid;
     });
 
     const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
@@ -302,7 +310,7 @@ function renderMonthlyStats() {
         container.innerHTML += `
             <div class="stat-row">
                 <strong>${date}</strong>
-                <span>Win Rate: ${winRate}%</span>
+                <span>WR: ${winRate}%</span>
                 <span class="${getColor(stat.pnl)}">${formatSol(stat.pnl)}</span>
             </div>
         `;
