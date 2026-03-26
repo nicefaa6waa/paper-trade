@@ -1,13 +1,24 @@
-// Register Service Worker for Android PWA Install
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(console.error);
 }
 
-// State Data Loader - BULLETPROOF
+const GAS_FEE = 0.002;
 let trades = [];
 let walletBalance = 0.000;
 let botSettings = { buyPrio: 0.001, buyTip: 0.005, buySlip: 5, sellPrio: 0.001, sellTip: 0.005, sellSlip: 5 };
+let currentSolPrice = 150; // Fallback USD price
 
+// Fetch Live SOL Price for Flex Cards
+async function fetchSolPrice() {
+    try {
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+        const data = await res.json();
+        if (data.solana && data.solana.usd) currentSolPrice = data.solana.usd;
+    } catch(e) { console.log('Using fallback SOL price.'); }
+}
+fetchSolPrice();
+
+// Bulletproof Loader
 try {
     const savedTrades = localStorage.getItem('proPaperTrades');
     if (savedTrades) {
@@ -26,7 +37,6 @@ try {
     if (savedSettings) botSettings = { ...botSettings, ...JSON.parse(savedSettings) };
 } catch (e) {}
 
-// Init Setup
 const todayDate = new Date();
 const localDateStr = todayDate.getFullYear() + '-' + String(todayDate.getMonth() + 1).padStart(2, '0') + '-' + String(todayDate.getDate()).padStart(2, '0');
 document.getElementById('tradeDate').value = localDateStr;
@@ -34,14 +44,13 @@ document.getElementById('tradeDate').value = localDateStr;
 updateWalletUI();
 renderUI();
 
-// Wallet Functions
 function updateWalletUI() {
-    document.getElementById('walletAmount').innerText = `${walletBalance.toFixed(3)} SOL`;
+    document.getElementById('walletAmount').innerText = `${walletBalance.toFixed(3)}`;
     localStorage.setItem('proWalletBalance', walletBalance.toString());
 }
 
 function addFunds() {
-    const amount = parseFloat(prompt("Enter amount of virtual SOL to add:", "10"));
+    const amount = parseFloat(prompt("Enter virtual SOL to add:", "10"));
     if (!isNaN(amount) && amount > 0) {
         walletBalance += amount;
         updateWalletUI();
@@ -49,13 +58,13 @@ function addFunds() {
 }
 
 function resetWallet() {
-    if (confirm("Reset your wallet to 0.000 SOL?")) {
+    if (confirm("Reset wallet to 0.000 SOL?")) {
         walletBalance = 0;
         updateWalletUI();
     }
 }
 
-// 🪂 SETTINGS MODAL LOGIC
+// 🪂 SETTINGS MODAL
 function openSettingsModal() {
     document.getElementById('setBuyPrio').value = botSettings.buyPrio;
     document.getElementById('setBuyTip').value = botSettings.buyTip;
@@ -83,12 +92,11 @@ function saveSettings() {
     closeSettingsModal();
 }
 
-// Tab Navigation
+// TABS
 function switchTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
-    
     if (element) {
         element.classList.add('active');
     } else {
@@ -97,40 +105,30 @@ function switchTab(tabId, element) {
     }
 }
 
-// DUAL-FETCH TOKEN INFO (Pump.fun -> DexScreener Fallback)
+// TOKEN FETCH (Pump.fun First)
 async function fetchTokenInfo(ca) {
-    // 1. Try Pump.fun API directly (Best for instant new token launches)
     try {
         const pumpRes = await fetch(`https://frontend-api.pump.fun/coins/${ca}`);
         if (pumpRes.ok) {
             const pumpData = await pumpRes.json();
             if (pumpData && pumpData.name) {
-                return {
-                    name: pumpData.name,
-                    symbol: pumpData.symbol,
-                    image: pumpData.image_uri || 'https://via.placeholder.com/32?text=?'
-                };
+                return { name: pumpData.name, symbol: pumpData.symbol, image: pumpData.image_uri || 'https://via.placeholder.com/32?text=?' };
             }
         }
-    } catch (e) { console.log("Not a pump coin, falling back to DexScreener..."); }
+    } catch (e) { }
 
-    // 2. Fallback to DexScreener for Raydium/Established coins
     try {
         const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${ca}`);
         const data = await dexRes.json();
         if (data.pairs && data.pairs.length > 0) {
-            return {
-                name: data.pairs[0].baseToken.name || "Unknown",
-                symbol: data.pairs[0].baseToken.symbol || "UNK",
-                image: data.pairs[0].info?.imageUrl || 'https://via.placeholder.com/32?text=?'
-            };
+            return { name: data.pairs[0].baseToken.name || "Unknown", symbol: data.pairs[0].baseToken.symbol || "UNK", image: data.pairs[0].info?.imageUrl || 'https://via.placeholder.com/32?text=?' };
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {}
     
     return { name: "Unknown Token", symbol: "???", image: 'https://via.placeholder.com/32?text=?' };
 }
 
-// Add Trade
+// LOG TRADE
 document.getElementById('newTradeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('addTradeBtn');
@@ -141,9 +139,8 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
 
     if (!caInput || isNaN(buyPrice) || isNaN(targetMC)) return;
 
-    // Apply Buy Presets
     const totalBuyFee = botSettings.buyPrio + botSettings.buyTip;
-    const executedBuyMC = targetMC * (1 + (botSettings.buySlip / 100)); // Slippage makes entry MC worse
+    const executedBuyMC = targetMC * (1 + (botSettings.buySlip / 100));
 
     walletBalance -= (buyPrice + totalBuyFee);
     updateWalletUI();
@@ -160,7 +157,7 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
         image: tokenInfo.image,
         buyPrice: buyPrice,
         targetBuyMC: targetMC,
-        executedBuyMC: executedBuyMC, // Actual MC executed due to slippage
+        executedBuyMC: executedBuyMC,
         status: 'open',
         soldPercentage: 0,
         totalRevenue: 0,
@@ -174,12 +171,11 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
     document.getElementById('ca').value = '';
     document.getElementById('buyPrice').value = '';
     document.getElementById('buyMC').value = '';
-    
     btn.innerText = "Log Trade"; btn.disabled = false;
     document.activeElement.blur(); 
 });
 
-// Handle Sell
+// SELL
 function handleSell(tradeId) {
     const targetSellMC = parseFloat(document.getElementById(`sellMC-${tradeId}`).value);
     const sellPct = parseFloat(document.getElementById(`sellPct-${tradeId}`).value);
@@ -192,9 +188,8 @@ function handleSell(tradeId) {
     let trade = trades[tradeIndex];
     const actualSellPct = Math.min(sellPct, 100 - (Number(trade.soldPercentage) || 0));
     
-    // Apply Sell Presets
     const totalSellFee = botSettings.sellPrio + botSettings.sellTip;
-    const executedSellMC = targetSellMC * (1 - (botSettings.sellSlip / 100)); // Slippage reduces exit MC
+    const executedSellMC = targetSellMC * (1 - (botSettings.sellSlip / 100)); 
     
     const costBasis = (Number(trade.buyPrice) || 0) * (actualSellPct / 100);
     const mcMultiplier = executedSellMC / (Number(trade.executedBuyMC) || 1); 
@@ -229,7 +224,6 @@ function handleSell(tradeId) {
     document.activeElement.blur(); 
 }
 
-// Delete Trade
 function deleteTrade(tradeId) {
     if (confirm("Permanently delete this trade log?")) {
         trades = trades.filter(t => t.id !== tradeId);
@@ -237,7 +231,6 @@ function deleteTrade(tradeId) {
     }
 }
 
-// Save & Render List Views
 function saveData() {
     localStorage.setItem('proPaperTrades', JSON.stringify(trades));
     renderUI();
@@ -249,14 +242,8 @@ function renderUI() {
     renderHistory('allHistoryList', false);
 }
 
-const formatSol = (val) => {
-    const num = Number(val) || 0;
-    return `${num > 0 ? '+' : ''}${num.toFixed(3)} SOL`;
-};
-const formatPct = (val) => {
-    const num = Number(val) || 0;
-    return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`;
-};
+const formatSol = (val) => `${Number(val) > 0 ? '+' : ''}${(Number(val) || 0).toFixed(3)} SOL`;
+const formatPct = (val) => `${Number(val) > 0 ? '+' : ''}${(Number(val) || 0).toFixed(2)}%`;
 const getColor = (val) => Number(val) > 0 ? 'text-green' : Number(val) < 0 ? 'text-red' : '';
 
 function renderOpenTrades() {
@@ -270,7 +257,6 @@ function renderOpenTrades() {
 
     openTrades.forEach(trade => {
         const remainingPct = 100 - (Number(trade.soldPercentage) || 0);
-        // Fallback to buyMC if executedBuyMC is missing from an old save
         const safeBuyMC = Number(trade.executedBuyMC) || Number(trade.buyMC) || 0; 
         const safeBuyPrice = Number(trade.buyPrice) || 0;
         
@@ -280,9 +266,11 @@ function renderOpenTrades() {
                     <img src="${trade.image}" alt="token">
                     <div class="trade-info">
                         <div class="trade-name">${trade.name || 'Unknown'} ($${trade.symbol || '?'})</div>
-                        <div class="trade-date">${trade.date} | Executed Entry: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
+                        <div class="trade-date">${trade.date} | Exec Entry: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
                     </div>
-                    <button class="btn-remove" onclick="deleteTrade('${trade.id}')" title="Remove">✕</button>
+                    <button class="btn-remove" onclick="deleteTrade('${trade.id}')" title="Remove">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
                 </div>
                 <div style="font-size: 0.9rem; margin-bottom: 5px; display: flex; justify-content: space-between;">
                     <span><strong>Size:</strong> ${safeBuyPrice} SOL</span>
@@ -316,7 +304,6 @@ function renderHistory(containerId, onlyToday) {
         if (!grouped[trade.date]) grouped[trade.date] = [];
         grouped[trade.date].push(trade);
     });
-
     const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
 
     if (dates.length === 0) {
@@ -339,7 +326,6 @@ function renderHistory(containerId, onlyToday) {
             dailyPnl += netPnl;
             if (netPnl > 0) wins++;
 
-            // Fallback for older saves that used "sellMC" directly without slippage calculations
             const sellsHtml = (trade.sells || []).map(s => {
                 const finalMC = Number(s.executedSellMC) || Number(s.sellMC) || 0;
                 return `Sold ${Number(s.percentage || 0)}% @ $${finalMC.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
@@ -352,13 +338,18 @@ function renderHistory(containerId, onlyToday) {
                         <div class="trade-info"><div class="trade-name">${trade.name || 'Unknown'}</div></div>
                         <div style="text-align: right;">
                             <div class="${getColor(netPnl)}">${formatPct(netPct)} <br> <small>${formatSol(netPnl)}</small></div>
-                            <button class="btn-remove" onclick="deleteTrade('${trade.id}')" style="margin-top: 5px; margin-left: auto; padding:0; width: 24px; height: 24px; font-size: 12px;" title="Remove">✕</button>
+                            <button class="btn-remove" onclick="deleteTrade('${trade.id}')" style="margin-top: 5px; margin-left: auto; width: 22px; height: 22px;" title="Remove">
+                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
                         </div>
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted);">
-                        Exec. Entry MC: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})} | Total Fees: -${safeGas.toFixed(3)}<br>
+                        Exec Entry: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})} | Fees: -${safeGas.toFixed(3)}<br>
                         ${sellsHtml}
                     </div>
+                    <button class="btn-sell" onclick="openFlexModal('${trade.id}')" style="margin-top: 10px; width: 100%; background: var(--card-bg); color: var(--text-main); border: 1px solid var(--accent); padding: 8px;">
+                        📸 PnL Flex
+                    </button>
                 </div>
             `;
         });
@@ -377,7 +368,52 @@ function renderHistory(containerId, onlyToday) {
     });
 }
 
-// --- BACKUP & RESTORE LOGIC ---
+// --- PNL FLEX CARD GENERATOR ---
+function openFlexModal(tradeId) {
+    const trade = trades.find(t => t.id === tradeId);
+    if(!trade) return;
+
+    const safeRevenue = Number(trade.totalRevenue) || 0;
+    const safeBuyPrice = Number(trade.buyPrice) || 0;
+    const safeGas = Number(trade.totalGasPaid) || 0;
+    
+    const netPnlSol = safeRevenue - safeBuyPrice - safeGas;
+    const netPct = safeBuyPrice > 0 ? (netPnlSol / safeBuyPrice) * 100 : 0;
+    const netPnlUsd = netPnlSol * currentSolPrice;
+
+    document.getElementById('flexCoinImg').src = trade.image;
+    document.getElementById('flexCoinName').innerText = trade.name || 'Unknown';
+    
+    const pctEl = document.getElementById('flexPct');
+    pctEl.innerText = `${netPct > 0 ? '+' : ''}${netPct.toFixed(2)}%`;
+    pctEl.className = `flex-pnl-pct ${netPct < 0 ? 'negative' : ''}`;
+
+    document.getElementById('flexSol').innerText = `${netPnlSol > 0 ? '+' : ''}${netPnlSol.toFixed(3)} SOL`;
+    
+    const usdEl = document.getElementById('flexUsd');
+    usdEl.innerText = `${netPnlUsd > 0 ? '+$' : '-$'}${Math.abs(netPnlUsd).toFixed(2)}`;
+    usdEl.className = `flex-pnl-usd ${netPnlUsd < 0 ? 'negative' : ''}`;
+    
+    document.getElementById('flexInvested').innerText = `${safeBuyPrice.toFixed(3)} SOL`;
+    document.getElementById('flexSold').innerText = `${safeRevenue.toFixed(3)} SOL`;
+
+    document.getElementById('flexModal').style.display = 'block';
+}
+
+function closeFlexModal() { document.getElementById('flexModal').style.display = 'none'; }
+
+function updateFlexBg(event) {
+    const file = event.target.files[0];
+    if(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('flexCard').style.backgroundImage = `url('${e.target.result}')`;
+        }
+        reader.readAsDataURL(file);
+    }
+}
+
+// --- BACKUP LOGIC ---
 function exportData() {
     const dataStr = JSON.stringify({ trades, walletBalance, botSettings });
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -395,18 +431,16 @@ function importData(event) {
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
-            if (Array.isArray(data)) {
-                trades = data;
-            } else if (data && data.trades) {
+            if (Array.isArray(data)) trades = data;
+            else if (data && data.trades) {
                 trades = Array.isArray(data.trades) ? data.trades : [];
                 if (data.walletBalance !== undefined) walletBalance = Number(data.walletBalance) || 0;
                 if (data.botSettings) botSettings = { ...botSettings, ...data.botSettings };
-            } else { throw new Error("Unrecognized Format"); }
-            
+            } else throw new Error();
             saveData();
             updateWalletUI();
             localStorage.setItem('proBotSettings', JSON.stringify(botSettings));
-            alert("Backup restored successfully!");
+            alert("Restored!");
             if(document.getElementById('statsModal').style.display === 'block') renderMonthlyStats();
         } catch (err) { alert("Error restoring backup."); }
     };
@@ -414,22 +448,15 @@ function importData(event) {
     event.target.value = ''; 
 }
 
-// --- PNL CALENDAR LOGIC ---
+// --- PNL CALENDAR ---
 let currentDate = new Date();
 
 function openStatsModal() {
     document.getElementById('statsModal').style.display = 'block';
     renderMonthlyStats();
 }
-
-function closeStatsModal() {
-    document.getElementById('statsModal').style.display = 'none';
-}
-
-function changeMonth(dir) {
-    currentDate.setMonth(currentDate.getMonth() + dir);
-    renderMonthlyStats();
-}
+function closeStatsModal() { document.getElementById('statsModal').style.display = 'none'; }
+function changeMonth(dir) { currentDate.setMonth(currentDate.getMonth() + dir); renderMonthlyStats(); }
 
 function renderMonthlyStats() {
     const container = document.getElementById('calendarGrid');
@@ -438,7 +465,6 @@ function renderMonthlyStats() {
     
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    
     label.innerText = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
 
     const dailyPnL = {};
@@ -457,9 +483,7 @@ function renderMonthlyStats() {
     let startDay = firstDay - 1; 
     if (startDay === -1) startDay = 6;
 
-    for (let i = 0; i < startDay; i++) {
-        container.innerHTML += `<div class="calendar-day empty"></div>`;
-    }
+    for (let i = 0; i < startDay; i++) container.innerHTML += `<div class="calendar-day empty"></div>`;
 
     for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
