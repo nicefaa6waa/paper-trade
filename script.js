@@ -1,3 +1,8 @@
+// Register Service Worker for Android PWA Install
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(console.error);
+}
+
 // Default Gas Fee in SOL
 const GAS_FEE = 0.002;
 
@@ -6,8 +11,8 @@ let trades = JSON.parse(localStorage.getItem('proPaperTrades')) || [];
 let walletBalance = parseFloat(localStorage.getItem('proWalletBalance')) || 0.000;
 
 // Init Setup - Handle Timezones gracefully
-const today = new Date();
-const localDateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+const todayDate = new Date();
+const localDateStr = todayDate.getFullYear() + '-' + String(todayDate.getMonth() + 1).padStart(2, '0') + '-' + String(todayDate.getDate()).padStart(2, '0');
 document.getElementById('tradeDate').value = localDateStr;
 
 updateWalletUI();
@@ -47,15 +52,6 @@ function switchTab(tabId, element) {
         const firstNav = document.querySelector('.nav-item');
         if(firstNav) firstNav.classList.add('active');
     }
-}
-
-// Modal Functions
-function openStatsModal() {
-    document.getElementById('statsModal').style.display = 'block';
-    renderMonthlyStats();
-}
-function closeStatsModal() {
-    document.getElementById('statsModal').style.display = 'none';
 }
 
 // DexScreener Fetch
@@ -132,7 +128,7 @@ function handleSell(tradeId) {
     const actualSellPct = Math.min(sellPct, 100 - (trade.soldPercentage || 0));
     
     const costBasis = (trade.buyPrice || 0) * (actualSellPct / 100);
-    const mcMultiplier = sellMC / (trade.buyMC || 1); // Prevent division by zero
+    const mcMultiplier = sellMC / (trade.buyMC || 1); 
     const revenueBeforeGas = costBasis * mcMultiplier;
     
     const pnlSol = revenueBeforeGas - costBasis - GAS_FEE;
@@ -163,7 +159,7 @@ function handleSell(tradeId) {
     document.activeElement.blur(); 
 }
 
-// Save & Render
+// Save & Render List Views
 function saveData() {
     localStorage.setItem('proPaperTrades', JSON.stringify(trades));
     renderUI();
@@ -222,13 +218,8 @@ function renderHistory(containerId, onlyToday) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
     
-    const todayStr = localDateStr; 
-    
     let closedTrades = trades.filter(t => t.status === 'closed');
-    
-    if (onlyToday) {
-        closedTrades = closedTrades.filter(t => t.date === todayStr);
-    }
+    if (onlyToday) closedTrades = closedTrades.filter(t => t.date === localDateStr);
 
     const grouped = {};
     closedTrades.forEach(trade => {
@@ -289,36 +280,108 @@ function renderHistory(containerId, onlyToday) {
     });
 }
 
-function renderMonthlyStats() {
-    const container = document.getElementById('monthlyStatsContainer');
-    container.innerHTML = '';
+// --- BACKUP & RESTORE LOGIC ---
+function exportData() {
+    const dataStr = JSON.stringify({ trades, walletBalance });
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `PaperTrack_Backup_${localDateStr}.json`;
+    a.click();
+}
 
-    const grouped = {};
+function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (data.trades) trades = data.trades;
+            if (data.walletBalance !== undefined) walletBalance = data.walletBalance;
+            saveData();
+            updateWalletUI();
+            alert("Backup restored successfully!");
+            renderMonthlyStats(); // Refresh calendar if modal is open
+        } catch (err) {
+            alert("Invalid backup file.");
+        }
+    };
+    reader.readAsText(file);
+}
+
+// --- PNL CALENDAR LOGIC ---
+let currentDate = new Date();
+
+function openStatsModal() {
+    document.getElementById('statsModal').style.display = 'block';
+    renderMonthlyStats();
+}
+
+function closeStatsModal() {
+    document.getElementById('statsModal').style.display = 'none';
+}
+
+function changeMonth(dir) {
+    currentDate.setMonth(currentDate.getMonth() + dir);
+    renderMonthlyStats();
+}
+
+function renderMonthlyStats() {
+    const container = document.getElementById('calendarGrid');
+    const label = document.getElementById('calendarMonthLabel');
+    container.innerHTML = '';
+    
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    label.innerText = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    // Aggregate PNL by date string (YYYY-MM-DD)
+    const dailyPnL = {};
     trades.forEach(trade => {
-        if (!grouped[trade.date]) grouped[trade.date] = { pnl: 0, count: 0, wins: 0 };
-        
         (trade.sells || []).forEach(sell => {
-            grouped[trade.date].pnl += (sell.pnlSol || 0);
-            if ((sell.pnlSol || 0) > 0) grouped[trade.date].wins++;
+            const sellDate = new Date(sell.timestamp);
+            if(sellDate.getFullYear() === year && sellDate.getMonth() === month) {
+                // Adjusting to local timezone string format for dictionary matching
+                const dateStr = sellDate.getFullYear() + '-' + String(sellDate.getMonth() + 1).padStart(2, '0') + '-' + String(sellDate.getDate()).padStart(2, '0');
+                dailyPnL[dateStr] = (dailyPnL[dateStr] || 0) + (sell.pnlSol || 0);
+            }
         });
-        grouped[trade.date].count += (trade.sells || []).length;
     });
 
-    const dates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
     
-    if(dates.length === 0) {
-        container.innerHTML = "<p>No data available.</p>"; return;
+    // JS getDay() is 0 for Sunday. We want Monday = 0, Sunday = 6
+    let startDay = firstDay - 1; 
+    if (startDay === -1) startDay = 6;
+
+    // Blank spaces before the 1st
+    for (let i = 0; i < startDay; i++) {
+        container.innerHTML += `<div class="calendar-day empty"></div>`;
     }
 
-    dates.forEach(date => {
-        const stat = grouped[date];
-        const winRate = stat.count > 0 ? ((stat.wins / stat.count) * 100).toFixed(0) : 0;
+    // Days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const pnl = dailyPnL[dateStr] || 0;
+        
+        let classes = "calendar-day";
+        if (dateStr === localDateStr) classes += " today"; // Highlight today
+        if (pnl > 0) classes += " positive";
+        if (pnl < 0) classes += " negative";
+
+        let pnlText = pnl !== 0 ? formatSol(pnl) : "";
+        let pnlColorClass = pnl > 0 ? "text-green" : (pnl < 0 ? "text-red" : "");
+
         container.innerHTML += `
-            <div class="stat-row">
-                <strong>${date}</strong>
-                <span>WR: ${winRate}%</span>
-                <span class="${getColor(stat.pnl)}">${formatSol(stat.pnl)}</span>
+            <div class="${classes}">
+                <span class="day-num">${day}</span>
+                <span class="day-pnl ${pnlColorClass}">${pnlText}</span>
             </div>
         `;
-    });
+    }
 }
+
