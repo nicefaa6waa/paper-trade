@@ -125,10 +125,10 @@ function handleSell(tradeId) {
     if (tradeIndex === -1) return;
 
     let trade = trades[tradeIndex];
-    const actualSellPct = Math.min(sellPct, 100 - (trade.soldPercentage || 0));
+    const actualSellPct = Math.min(sellPct, 100 - (Number(trade.soldPercentage) || 0));
     
-    const costBasis = (trade.buyPrice || 0) * (actualSellPct / 100);
-    const mcMultiplier = sellMC / (trade.buyMC || 1); 
+    const costBasis = (Number(trade.buyPrice) || 0) * (actualSellPct / 100);
+    const mcMultiplier = sellMC / (Number(trade.buyMC) || 1); 
     const revenueBeforeGas = costBasis * mcMultiplier;
     
     const pnlSol = revenueBeforeGas - costBasis - GAS_FEE;
@@ -145,9 +145,9 @@ function handleSell(tradeId) {
         timestamp: new Date().toISOString()
     });
 
-    trade.soldPercentage = (trade.soldPercentage || 0) + actualSellPct;
-    trade.totalRevenue = (trade.totalRevenue || 0) + revenueBeforeGas;
-    trade.totalGasPaid = (trade.totalGasPaid || 0) + GAS_FEE;
+    trade.soldPercentage = (Number(trade.soldPercentage) || 0) + actualSellPct;
+    trade.totalRevenue = (Number(trade.totalRevenue) || 0) + revenueBeforeGas;
+    trade.totalGasPaid = (Number(trade.totalGasPaid) || 0) + GAS_FEE;
 
     walletBalance += (revenueBeforeGas - GAS_FEE);
     updateWalletUI();
@@ -157,6 +157,14 @@ function handleSell(tradeId) {
     trades[tradeIndex] = trade;
     saveData();
     document.activeElement.blur(); 
+}
+
+// Delete Trade
+function deleteTrade(tradeId) {
+    if (confirm("Are you sure you want to permanently delete this trade?")) {
+        trades = trades.filter(t => t.id !== tradeId);
+        saveData();
+    }
 }
 
 // Save & Render List Views
@@ -171,9 +179,16 @@ function renderUI() {
     renderHistory('allHistoryList', false);
 }
 
-const formatSol = (val) => `${val > 0 ? '+' : ''}${(val || 0).toFixed(3)} SOL`;
-const formatPct = (val) => `${val > 0 ? '+' : ''}${(val || 0).toFixed(2)}%`;
-const getColor = (val) => val > 0 ? 'text-green' : val < 0 ? 'text-red' : '';
+// CRASH-PROOF FORMATTERS
+const formatSol = (val) => {
+    const num = Number(val) || 0;
+    return `${num > 0 ? '+' : ''}${num.toFixed(3)} SOL`;
+};
+const formatPct = (val) => {
+    const num = Number(val) || 0;
+    return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`;
+};
+const getColor = (val) => Number(val) > 0 ? 'text-green' : Number(val) < 0 ? 'text-red' : '';
 
 function renderOpenTrades() {
     const container = document.getElementById('openTradesList');
@@ -185,8 +200,9 @@ function renderOpenTrades() {
     }
 
     openTrades.forEach(trade => {
-        const remainingPct = 100 - (trade.soldPercentage || 0);
-        const safeBuyMC = trade.buyMC || 0;
+        const remainingPct = 100 - (Number(trade.soldPercentage) || 0);
+        const safeBuyMC = Number(trade.buyMC) || 0;
+        const safeBuyPrice = Number(trade.buyPrice) || 0;
         
         container.innerHTML += `
             <div class="trade-item">
@@ -196,8 +212,9 @@ function renderOpenTrades() {
                         <div class="trade-name">${trade.name || 'Unknown'} ($${trade.symbol || '?'})</div>
                         <div class="trade-date">${trade.date} | Entry MC: $${safeBuyMC.toLocaleString()}</div>
                     </div>
+                    <button class="btn-small btn-danger" onclick="deleteTrade('${trade.id}')" style="padding: 5px 10px;">🗑️</button>
                 </div>
-                <div style="font-size: 0.9rem; margin-bottom: 5px;"><strong>Entry:</strong> ${trade.buyPrice} SOL | <strong>Sold:</strong> ${trade.soldPercentage || 0}%</div>
+                <div style="font-size: 0.9rem; margin-bottom: 5px;"><strong>Entry:</strong> ${safeBuyPrice} SOL | <strong>Sold:</strong> ${Number(trade.soldPercentage) || 0}%</div>
                 <div class="sell-form">
                     <div class="input-group" style="margin-bottom:0">
                         <label>Sell MC ($)</label>
@@ -238,10 +255,10 @@ function renderHistory(containerId, onlyToday) {
         let dailyPnl = 0; let wins = 0; let tradesHtml = '';
 
         dayTrades.forEach(trade => {
-            const safeRevenue = trade.totalRevenue || 0;
-            const safeBuyPrice = trade.buyPrice || 0;
-            const safeGas = trade.totalGasPaid || 0;
-            const safeBuyMC = trade.buyMC || 0;
+            const safeRevenue = Number(trade.totalRevenue) || 0;
+            const safeBuyPrice = Number(trade.buyPrice) || 0;
+            const safeGas = Number(trade.totalGasPaid) || 0;
+            const safeBuyMC = Number(trade.buyMC) || 0;
 
             const netPnl = safeRevenue - safeBuyPrice - safeGas;
             const netPct = safeBuyPrice > 0 ? (netPnl / safeBuyPrice) * 100 : 0;
@@ -249,14 +266,17 @@ function renderHistory(containerId, onlyToday) {
             dailyPnl += netPnl;
             if (netPnl > 0) wins++;
 
-            const sellsHtml = (trade.sells || []).map(s => `Sold ${s.percentage}% @ $${(s.sellMC || 0).toLocaleString()}`).join('<br>');
+            const sellsHtml = (trade.sells || []).map(s => `Sold ${Number(s.percentage || 0)}% @ $${Number(s.sellMC || 0).toLocaleString()}`).join('<br>');
 
             tradesHtml += `
                 <div class="trade-item">
                     <div class="trade-header">
                         <img src="${trade.image}">
                         <div class="trade-info"><div class="trade-name">${trade.name || 'Unknown'}</div></div>
-                        <div class="${getColor(netPnl)}">${formatPct(netPct)} <br> <small>${formatSol(netPnl)}</small></div>
+                        <div style="text-align: right;">
+                            <div class="${getColor(netPnl)}">${formatPct(netPct)} <br> <small>${formatSol(netPnl)}</small></div>
+                            <button class="btn-small btn-danger" onclick="deleteTrade('${trade.id}')" style="margin-top: 5px; padding: 2px 8px; font-size: 0.75rem;">🗑️</button>
+                        </div>
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted);">
                         Entry MC: $${safeBuyMC.toLocaleString()} | Gas: -${safeGas.toFixed(3)}<br>
@@ -280,7 +300,7 @@ function renderHistory(containerId, onlyToday) {
     });
 }
 
-// --- BACKUP & RESTORE LOGIC ---
+// --- SMARTER BACKUP & RESTORE LOGIC ---
 function exportData() {
     const dataStr = JSON.stringify({ trades, walletBalance });
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -298,17 +318,28 @@ function importData(event) {
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
-            if (data.trades) trades = data.trades;
-            if (data.walletBalance !== undefined) walletBalance = data.walletBalance;
+            
+            // Accept old backup arrays OR new backup objects
+            if (Array.isArray(data)) {
+                trades = data;
+            } else if (data && data.trades) {
+                trades = data.trades;
+                if (data.walletBalance !== undefined) walletBalance = Number(data.walletBalance);
+            } else {
+                throw new Error("Unrecognized Format");
+            }
+            
             saveData();
             updateWalletUI();
             alert("Backup restored successfully!");
-            renderMonthlyStats(); // Refresh calendar if modal is open
+            if(document.getElementById('statsModal').style.display === 'block') renderMonthlyStats();
         } catch (err) {
-            alert("Invalid backup file.");
+            alert("Error restoring backup. Ensure it is a valid JSON backup file.");
+            console.error(err);
         }
     };
     reader.readAsText(file);
+    event.target.value = ''; // Reset input so you can re-import if needed
 }
 
 // --- PNL CALENDAR LOGIC ---
@@ -338,15 +369,13 @@ function renderMonthlyStats() {
     
     label.innerText = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-    // Aggregate PNL by date string (YYYY-MM-DD)
     const dailyPnL = {};
     trades.forEach(trade => {
         (trade.sells || []).forEach(sell => {
             const sellDate = new Date(sell.timestamp);
             if(sellDate.getFullYear() === year && sellDate.getMonth() === month) {
-                // Adjusting to local timezone string format for dictionary matching
                 const dateStr = sellDate.getFullYear() + '-' + String(sellDate.getMonth() + 1).padStart(2, '0') + '-' + String(sellDate.getDate()).padStart(2, '0');
-                dailyPnL[dateStr] = (dailyPnL[dateStr] || 0) + (sell.pnlSol || 0);
+                dailyPnL[dateStr] = (dailyPnL[dateStr] || 0) + (Number(sell.pnlSol) || 0);
             }
         });
     });
@@ -354,22 +383,19 @@ function renderMonthlyStats() {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     
-    // JS getDay() is 0 for Sunday. We want Monday = 0, Sunday = 6
     let startDay = firstDay - 1; 
     if (startDay === -1) startDay = 6;
 
-    // Blank spaces before the 1st
     for (let i = 0; i < startDay; i++) {
         container.innerHTML += `<div class="calendar-day empty"></div>`;
     }
 
-    // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const pnl = dailyPnL[dateStr] || 0;
         
         let classes = "calendar-day";
-        if (dateStr === localDateStr) classes += " today"; // Highlight today
+        if (dateStr === localDateStr) classes += " today"; 
         if (pnl > 0) classes += " positive";
         if (pnl < 0) classes += " negative";
 
