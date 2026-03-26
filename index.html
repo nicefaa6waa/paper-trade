@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pro Paper Tracker</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="manifest" href="manifest.json">
 </head>
 <body>
     <header class="mobile-header">
@@ -39,7 +40,7 @@
                         </div>
                     </div>
                     <div class="input-group" style="margin-top: 5px;">
-                        <label for="tradeDate">Date (Auto-sets to Today)</label>
+                        <label for="tradeDate">Date</label>
                         <input type="date" id="tradeDate" required>
                     </div>
                     <button type="submit" id="addTradeBtn">Log Trade</button>
@@ -68,12 +69,27 @@
     </div>
 
     <div id="statsModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content calendar-modal">
             <div class="modal-header">
-                <h2>Monthly Stats</h2>
-                <span class="close" onclick="closeStatsModal()">&times;</span>
+                <h2>PNL Calendar</h2>
+                <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
+                    <button class="btn-small" style="background: var(--border-color); color: #fff; border:none; padding: 6px 10px; border-radius: 4px;" onclick="exportData()">💾 Backup</button>
+                    <button class="btn-small" style="background: var(--border-color); color: #fff; border:none; padding: 6px 10px; border-radius: 4px;" onclick="document.getElementById('importFile').click()">📂 Restore</button>
+                    <input type="file" id="importFile" style="display:none" onchange="importData(event)" accept=".json">
+                    <span class="close" onclick="closeStatsModal()">&times;</span>
+                </div>
             </div>
-            <div id="monthlyStatsContainer"></div>
+            
+            <div class="calendar-controls">
+                <button onclick="changeMonth(-1)">&#8592;</button>
+                <h3 id="calendarMonthLabel" style="color: #fff;">Month Year</h3>
+                <button onclick="changeMonth(1)">&#8594;</button>
+            </div>
+
+            <div class="calendar-header-days">
+                <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+            </div>
+            <div id="calendarGrid" class="calendar-grid"></div>
         </div>
     </div>
 
