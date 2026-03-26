@@ -3,35 +3,30 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(console.error);
 }
 
-// Default Gas Fee in SOL
-const GAS_FEE = 0.002;
-
-// State - MADE BULLETPROOF AGAINST CORRUPTED DATA
+// State Data Loader - BULLETPROOF
 let trades = [];
 let walletBalance = 0.000;
+let botSettings = { buyPrio: 0.001, buyTip: 0.005, buySlip: 5, sellPrio: 0.001, sellTip: 0.005, sellSlip: 5 };
 
 try {
     const savedTrades = localStorage.getItem('proPaperTrades');
     if (savedTrades) {
         const parsed = JSON.parse(savedTrades);
-        // Ensure the loaded data is actually an array, otherwise reset it
         trades = Array.isArray(parsed) ? parsed : (parsed.trades || []);
     }
-} catch (e) {
-    console.error("Corrupted trade data found and ignored.", e);
-    trades = [];
-}
+} catch (e) { trades = []; }
 
 try {
     const savedWallet = localStorage.getItem('proWalletBalance');
-    if (savedWallet) {
-        walletBalance = parseFloat(savedWallet) || 0.000;
-    }
-} catch (e) {
-    walletBalance = 0.000;
-}
+    if (savedWallet) walletBalance = parseFloat(savedWallet) || 0.000;
+} catch (e) { walletBalance = 0.000; }
 
-// Init Setup - Handle Timezones gracefully
+try {
+    const savedSettings = localStorage.getItem('proBotSettings');
+    if (savedSettings) botSettings = { ...botSettings, ...JSON.parse(savedSettings) };
+} catch (e) {}
+
+// Init Setup
 const todayDate = new Date();
 const localDateStr = todayDate.getFullYear() + '-' + String(todayDate.getMonth() + 1).padStart(2, '0') + '-' + String(todayDate.getDate()).padStart(2, '0');
 document.getElementById('tradeDate').value = localDateStr;
@@ -60,11 +55,38 @@ function resetWallet() {
     }
 }
 
-// Tab Navigation for Bottom Nav
+// 🪂 SETTINGS MODAL LOGIC
+function openSettingsModal() {
+    document.getElementById('setBuyPrio').value = botSettings.buyPrio;
+    document.getElementById('setBuyTip').value = botSettings.buyTip;
+    document.getElementById('setBuySlip').value = botSettings.buySlip;
+    document.getElementById('setSellPrio').value = botSettings.sellPrio;
+    document.getElementById('setSellTip').value = botSettings.sellTip;
+    document.getElementById('setSellSlip').value = botSettings.sellSlip;
+    document.getElementById('settingsModal').style.display = 'block';
+}
+
+function closeSettingsModal() {
+    document.getElementById('settingsModal').style.display = 'none';
+}
+
+function saveSettings() {
+    botSettings = {
+        buyPrio: parseFloat(document.getElementById('setBuyPrio').value) || 0,
+        buyTip: parseFloat(document.getElementById('setBuyTip').value) || 0,
+        buySlip: parseFloat(document.getElementById('setBuySlip').value) || 0,
+        sellPrio: parseFloat(document.getElementById('setSellPrio').value) || 0,
+        sellTip: parseFloat(document.getElementById('setSellTip').value) || 0,
+        sellSlip: parseFloat(document.getElementById('setSellSlip').value) || 0
+    };
+    localStorage.setItem('proBotSettings', JSON.stringify(botSettings));
+    closeSettingsModal();
+}
+
+// Tab Navigation
 function switchTab(tabId, element) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
-    
     document.getElementById(tabId).classList.add('active');
     
     if (element) {
@@ -75,11 +97,27 @@ function switchTab(tabId, element) {
     }
 }
 
-// DexScreener Fetch
+// DUAL-FETCH TOKEN INFO (Pump.fun -> DexScreener Fallback)
 async function fetchTokenInfo(ca) {
+    // 1. Try Pump.fun API directly (Best for instant new token launches)
     try {
-        const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${ca}`);
-        const data = await response.json();
+        const pumpRes = await fetch(`https://frontend-api.pump.fun/coins/${ca}`);
+        if (pumpRes.ok) {
+            const pumpData = await pumpRes.json();
+            if (pumpData && pumpData.name) {
+                return {
+                    name: pumpData.name,
+                    symbol: pumpData.symbol,
+                    image: pumpData.image_uri || 'https://via.placeholder.com/32?text=?'
+                };
+            }
+        }
+    } catch (e) { console.log("Not a pump coin, falling back to DexScreener..."); }
+
+    // 2. Fallback to DexScreener for Raydium/Established coins
+    try {
+        const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${ca}`);
+        const data = await dexRes.json();
         if (data.pairs && data.pairs.length > 0) {
             return {
                 name: data.pairs[0].baseToken.name || "Unknown",
@@ -88,6 +126,7 @@ async function fetchTokenInfo(ca) {
             };
         }
     } catch (e) { console.error(e); }
+    
     return { name: "Unknown Token", symbol: "???", image: 'https://via.placeholder.com/32?text=?' };
 }
 
@@ -98,14 +137,18 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
     const dateInput = document.getElementById('tradeDate').value;
     const caInput = document.getElementById('ca').value.trim();
     const buyPrice = parseFloat(document.getElementById('buyPrice').value);
-    const buyMC = parseFloat(document.getElementById('buyMC').value);
+    const targetMC = parseFloat(document.getElementById('buyMC').value);
 
-    if (!caInput || isNaN(buyPrice) || isNaN(buyMC)) return;
+    if (!caInput || isNaN(buyPrice) || isNaN(targetMC)) return;
 
-    walletBalance -= (buyPrice + GAS_FEE);
+    // Apply Buy Presets
+    const totalBuyFee = botSettings.buyPrio + botSettings.buyTip;
+    const executedBuyMC = targetMC * (1 + (botSettings.buySlip / 100)); // Slippage makes entry MC worse
+
+    walletBalance -= (buyPrice + totalBuyFee);
     updateWalletUI();
 
-    btn.innerText = "Fetching..."; btn.disabled = true;
+    btn.innerText = "Fetching Token..."; btn.disabled = true;
     const tokenInfo = await fetchTokenInfo(caInput);
 
     const newTrade = {
@@ -116,15 +159,16 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
         symbol: tokenInfo.symbol,
         image: tokenInfo.image,
         buyPrice: buyPrice,
-        buyMC: buyMC,
+        targetBuyMC: targetMC,
+        executedBuyMC: executedBuyMC, // Actual MC executed due to slippage
         status: 'open',
         soldPercentage: 0,
         totalRevenue: 0,
-        totalGasPaid: GAS_FEE,
+        totalGasPaid: totalBuyFee,
         sells: []
     };
 
-    trades.unshift(newTrade); // Add new trades to the top of the list
+    trades.unshift(newTrade);
     saveData();
     
     document.getElementById('ca').value = '';
@@ -132,15 +176,15 @@ document.getElementById('newTradeForm').addEventListener('submit', async (e) => 
     document.getElementById('buyMC').value = '';
     
     btn.innerText = "Log Trade"; btn.disabled = false;
-    document.activeElement.blur(); // Hide Android Keyboard
+    document.activeElement.blur(); 
 });
 
 // Handle Sell
 function handleSell(tradeId) {
-    const sellMC = parseFloat(document.getElementById(`sellMC-${tradeId}`).value);
+    const targetSellMC = parseFloat(document.getElementById(`sellMC-${tradeId}`).value);
     const sellPct = parseFloat(document.getElementById(`sellPct-${tradeId}`).value);
 
-    if (isNaN(sellMC) || isNaN(sellPct) || sellPct <= 0) return;
+    if (isNaN(targetSellMC) || isNaN(sellPct) || sellPct <= 0) return;
 
     const tradeIndex = trades.findIndex(t => t.id === tradeId);
     if (tradeIndex === -1) return;
@@ -148,29 +192,34 @@ function handleSell(tradeId) {
     let trade = trades[tradeIndex];
     const actualSellPct = Math.min(sellPct, 100 - (Number(trade.soldPercentage) || 0));
     
+    // Apply Sell Presets
+    const totalSellFee = botSettings.sellPrio + botSettings.sellTip;
+    const executedSellMC = targetSellMC * (1 - (botSettings.sellSlip / 100)); // Slippage reduces exit MC
+    
     const costBasis = (Number(trade.buyPrice) || 0) * (actualSellPct / 100);
-    const mcMultiplier = sellMC / (Number(trade.buyMC) || 1); 
+    const mcMultiplier = executedSellMC / (Number(trade.executedBuyMC) || 1); 
     const revenueBeforeGas = costBasis * mcMultiplier;
     
-    const pnlSol = revenueBeforeGas - costBasis - GAS_FEE;
+    const pnlSol = revenueBeforeGas - costBasis - totalSellFee;
     const pnlPct = ((revenueBeforeGas / costBasis) - 1) * 100;
 
     trade.sells = trade.sells || [];
     trade.sells.push({
-        sellMC: sellMC,
+        targetSellMC: targetSellMC,
+        executedSellMC: executedSellMC,
         percentage: actualSellPct,
         pnlSol: pnlSol,
         pnlPct: pnlPct,
         revenue: revenueBeforeGas,
-        gas: GAS_FEE,
+        gas: totalSellFee,
         timestamp: new Date().toISOString()
     });
 
     trade.soldPercentage = (Number(trade.soldPercentage) || 0) + actualSellPct;
     trade.totalRevenue = (Number(trade.totalRevenue) || 0) + revenueBeforeGas;
-    trade.totalGasPaid = (Number(trade.totalGasPaid) || 0) + GAS_FEE;
+    trade.totalGasPaid = (Number(trade.totalGasPaid) || 0) + totalSellFee;
 
-    walletBalance += (revenueBeforeGas - GAS_FEE);
+    walletBalance += (revenueBeforeGas - totalSellFee);
     updateWalletUI();
 
     if (trade.soldPercentage >= 100) trade.status = 'closed';
@@ -182,7 +231,7 @@ function handleSell(tradeId) {
 
 // Delete Trade
 function deleteTrade(tradeId) {
-    if (confirm("Are you sure you want to permanently delete this trade?")) {
+    if (confirm("Permanently delete this trade log?")) {
         trades = trades.filter(t => t.id !== tradeId);
         saveData();
     }
@@ -200,7 +249,6 @@ function renderUI() {
     renderHistory('allHistoryList', false);
 }
 
-// CRASH-PROOF FORMATTERS
 const formatSol = (val) => {
     const num = Number(val) || 0;
     return `${num > 0 ? '+' : ''}${num.toFixed(3)} SOL`;
@@ -222,7 +270,8 @@ function renderOpenTrades() {
 
     openTrades.forEach(trade => {
         const remainingPct = 100 - (Number(trade.soldPercentage) || 0);
-        const safeBuyMC = Number(trade.buyMC) || 0;
+        // Fallback to buyMC if executedBuyMC is missing from an old save
+        const safeBuyMC = Number(trade.executedBuyMC) || Number(trade.buyMC) || 0; 
         const safeBuyPrice = Number(trade.buyPrice) || 0;
         
         container.innerHTML += `
@@ -231,14 +280,17 @@ function renderOpenTrades() {
                     <img src="${trade.image}" alt="token">
                     <div class="trade-info">
                         <div class="trade-name">${trade.name || 'Unknown'} ($${trade.symbol || '?'})</div>
-                        <div class="trade-date">${trade.date} | Entry MC: $${safeBuyMC.toLocaleString()}</div>
+                        <div class="trade-date">${trade.date} | Executed Entry: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
                     </div>
-                    <button class="btn-small btn-danger" onclick="deleteTrade('${trade.id}')" style="padding: 5px 10px;">🗑️</button>
+                    <button class="btn-remove" onclick="deleteTrade('${trade.id}')" title="Remove">✕</button>
                 </div>
-                <div style="font-size: 0.9rem; margin-bottom: 5px;"><strong>Entry:</strong> ${safeBuyPrice} SOL | <strong>Sold:</strong> ${Number(trade.soldPercentage) || 0}%</div>
+                <div style="font-size: 0.9rem; margin-bottom: 5px; display: flex; justify-content: space-between;">
+                    <span><strong>Size:</strong> ${safeBuyPrice} SOL</span>
+                    <span><strong>Sold:</strong> ${Number(trade.soldPercentage) || 0}%</span>
+                </div>
                 <div class="sell-form">
                     <div class="input-group" style="margin-bottom:0">
-                        <label>Sell MC ($)</label>
+                        <label>Target MC ($)</label>
                         <input type="number" inputmode="numeric" id="sellMC-${trade.id}" placeholder="100000">
                     </div>
                     <div class="input-group" style="margin-bottom:0; max-width: 70px;">
@@ -279,7 +331,7 @@ function renderHistory(containerId, onlyToday) {
             const safeRevenue = Number(trade.totalRevenue) || 0;
             const safeBuyPrice = Number(trade.buyPrice) || 0;
             const safeGas = Number(trade.totalGasPaid) || 0;
-            const safeBuyMC = Number(trade.buyMC) || 0;
+            const safeBuyMC = Number(trade.executedBuyMC) || Number(trade.buyMC) || 0;
 
             const netPnl = safeRevenue - safeBuyPrice - safeGas;
             const netPct = safeBuyPrice > 0 ? (netPnl / safeBuyPrice) * 100 : 0;
@@ -287,7 +339,11 @@ function renderHistory(containerId, onlyToday) {
             dailyPnl += netPnl;
             if (netPnl > 0) wins++;
 
-            const sellsHtml = (trade.sells || []).map(s => `Sold ${Number(s.percentage || 0)}% @ $${Number(s.sellMC || 0).toLocaleString()}`).join('<br>');
+            // Fallback for older saves that used "sellMC" directly without slippage calculations
+            const sellsHtml = (trade.sells || []).map(s => {
+                const finalMC = Number(s.executedSellMC) || Number(s.sellMC) || 0;
+                return `Sold ${Number(s.percentage || 0)}% @ $${finalMC.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+            }).join('<br>');
 
             tradesHtml += `
                 <div class="trade-item">
@@ -296,11 +352,11 @@ function renderHistory(containerId, onlyToday) {
                         <div class="trade-info"><div class="trade-name">${trade.name || 'Unknown'}</div></div>
                         <div style="text-align: right;">
                             <div class="${getColor(netPnl)}">${formatPct(netPct)} <br> <small>${formatSol(netPnl)}</small></div>
-                            <button class="btn-small btn-danger" onclick="deleteTrade('${trade.id}')" style="margin-top: 5px; padding: 2px 8px; font-size: 0.75rem;">🗑️</button>
+                            <button class="btn-remove" onclick="deleteTrade('${trade.id}')" style="margin-top: 5px; margin-left: auto; padding:0; width: 24px; height: 24px; font-size: 12px;" title="Remove">✕</button>
                         </div>
                     </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted);">
-                        Entry MC: $${safeBuyMC.toLocaleString()} | Gas: -${safeGas.toFixed(3)}<br>
+                        Exec. Entry MC: $${safeBuyMC.toLocaleString(undefined, {maximumFractionDigits: 0})} | Total Fees: -${safeGas.toFixed(3)}<br>
                         ${sellsHtml}
                     </div>
                 </div>
@@ -321,9 +377,9 @@ function renderHistory(containerId, onlyToday) {
     });
 }
 
-// --- SMARTER BACKUP & RESTORE LOGIC ---
+// --- BACKUP & RESTORE LOGIC ---
 function exportData() {
-    const dataStr = JSON.stringify({ trades, walletBalance });
+    const dataStr = JSON.stringify({ trades, walletBalance, botSettings });
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -339,28 +395,23 @@ function importData(event) {
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
-            
-            // Accept old backup arrays OR new backup objects
             if (Array.isArray(data)) {
                 trades = data;
             } else if (data && data.trades) {
                 trades = Array.isArray(data.trades) ? data.trades : [];
                 if (data.walletBalance !== undefined) walletBalance = Number(data.walletBalance) || 0;
-            } else {
-                throw new Error("Unrecognized Format");
-            }
+                if (data.botSettings) botSettings = { ...botSettings, ...data.botSettings };
+            } else { throw new Error("Unrecognized Format"); }
             
             saveData();
             updateWalletUI();
+            localStorage.setItem('proBotSettings', JSON.stringify(botSettings));
             alert("Backup restored successfully!");
             if(document.getElementById('statsModal').style.display === 'block') renderMonthlyStats();
-        } catch (err) {
-            alert("Error restoring backup. Ensure it is a valid JSON backup file.");
-            console.error(err);
-        }
+        } catch (err) { alert("Error restoring backup."); }
     };
     reader.readAsText(file);
-    event.target.value = ''; // Reset input so you can re-import if needed
+    event.target.value = ''; 
 }
 
 // --- PNL CALENDAR LOGIC ---
@@ -403,7 +454,6 @@ function renderMonthlyStats() {
 
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
     let startDay = firstDay - 1; 
     if (startDay === -1) startDay = 6;
 
