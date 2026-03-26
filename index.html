@@ -3,50 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solana Paper Trading Tracker</title>
+    <title>Solana Pro Paper Tracker</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <nav class="top-nav">
+        <div class="nav-left">
+            <h1>Pro Paper Tracker</h1>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('openTradesTab')">Open Trades</button>
+                <button class="tab-btn" onclick="switchTab('todayTradesTab')">Today's Trades</button>
+                <button class="tab-btn" onclick="switchTab('historyTab')">All History</button>
+            </div>
+        </div>
+        <div class="nav-right wallet-section">
+            <div class="wallet-balance">
+                <span>Wallet:</span>
+                <strong id="walletAmount">0.000 SOL</strong>
+            </div>
+            <button class="btn-small" onclick="addFunds()">+ Add Funds</button>
+            <button class="btn-small btn-danger" onclick="resetWallet()">Reset</button>
+            <button class="btn-small btn-accent" onclick="openStatsModal()">📊 Monthly Stats</button>
+        </div>
+    </nav>
+
     <div class="container">
-        <header>
-            <h1>Paper Trading Dashboard</h1>
-            <div class="header-stats" id="globalStats">
+        <div id="openTradesTab" class="tab-content active">
+            <main>
+                <div class="col">
+                    <section class="card new-trade-section">
+                        <h2>Open New Trade</h2>
+                        <form id="newTradeForm">
+                            <div class="input-group">
+                                <label for="tradeDate">Trade Date</label>
+                                <input type="date" id="tradeDate" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="ca">Contract Address (CA)</label>
+                                <input type="text" id="ca" placeholder="Paste Solana CA..." required>
+                            </div>
+                            <div class="row-inputs">
+                                <div class="input-group">
+                                    <label for="buyPrice">Buy Amount (SOL)</label>
+                                    <input type="number" id="buyPrice" step="0.001" placeholder="e.g. 0.5" required>
+                                </div>
+                                <div class="input-group">
+                                    <label for="buyMC">Buy Marketcap ($)</label>
+                                    <input type="number" id="buyMC" step="1" placeholder="e.g. 50000" required>
+                                </div>
+                            </div>
+                            <button type="submit" id="addTradeBtn">Fetch Token & Add Trade</button>
+                        </form>
+                    </section>
                 </div>
-        </header>
+                <div class="col">
+                    <section class="card open-trades-section">
+                        <h2>Open Trades</h2>
+                        <div id="openTradesList"></div>
+                    </section>
+                </div>
+            </main>
+        </div>
 
-        <main>
-            <div class="col">
-                <section class="card new-trade-section">
-                    <h2>Open New Trade</h2>
-                    <form id="newTradeForm">
-                        <div class="input-group">
-                            <label for="ca">Contract Address (CA)</label>
-                            <input type="text" id="ca" placeholder="Paste Solana CA..." required>
-                        </div>
-                        <div class="input-group">
-                            <label for="buyPrice">Buy Amount (SOL)</label>
-                            <input type="number" id="buyPrice" step="0.001" placeholder="e.g. 0.5" required>
-                        </div>
-                        <button type="submit" id="addTradeBtn">Fetch Token & Add Trade</button>
-                    </form>
-                </section>
+        <div id="todayTradesTab" class="tab-content">
+            <section class="card history-section">
+                <h2>Today's Closed Trades</h2>
+                <div id="todayHistoryList"></div>
+            </section>
+        </div>
 
-                <section class="card open-trades-section">
-                    <h2>Open Trades</h2>
-                    <div id="openTradesList">
-                        </div>
-                </section>
-            </div>
-
-            <div class="col">
-                <section class="card history-section">
-                    <h2>Daily History & Closed Trades</h2>
-                    <div id="dailyHistoryList">
-                        </div>
-                </section>
-            </div>
-        </main>
+        <div id="historyTab" class="tab-content">
+            <section class="card history-section">
+                <h2>All Closed Trades</h2>
+                <div id="allHistoryList"></div>
+            </section>
+        </div>
     </div>
+
+    <div id="statsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeStatsModal()">&times;</span>
+            <h2>Monthly Daily Stats</h2>
+            <div id="monthlyStatsContainer"></div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
